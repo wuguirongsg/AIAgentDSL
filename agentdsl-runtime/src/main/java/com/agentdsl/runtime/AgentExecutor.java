@@ -11,12 +11,16 @@ import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
+import dev.langchain4j.rag.content.Content;
+import dev.langchain4j.rag.content.retriever.ContentRetriever;
+import dev.langchain4j.rag.query.Query;
 import dev.langchain4j.service.tool.ToolExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Agent 执行引擎。
@@ -68,8 +72,9 @@ public class AgentExecutor {
             messages.addAll(instance.getMemory().messages());
         }
 
-        // 添加用户消息
-        UserMessage userMsg = UserMessage.from(userMessage);
+        // 添加用户消息（可能经过 RAG 增强）
+        String augmentedMessage = augmentWithRag(instance, userMessage);
+        UserMessage userMsg = UserMessage.from(augmentedMessage);
         messages.add(userMsg);
 
         // 保存到记忆
@@ -147,6 +152,41 @@ public class AgentExecutor {
 
         throw new DslRuntimeException("ADSL-020",
                 "Agent '" + instance.getName() + "' 工具调用循环超过最大次数: " + MAX_TOOL_ITERATIONS);
+    }
+
+    /**
+     * 如果 Agent 配置了 RAG，检索相关内容并增强用户消息。
+     */
+    private String augmentWithRag(AgentInstance instance, String userMessage) {
+        ContentRetriever retriever = instance.getContentRetriever();
+        if (retriever == null) {
+            return userMessage;
+        }
+
+        try {
+            List<Content> contents = retriever.retrieve(Query.from(userMessage));
+            if (contents == null || contents.isEmpty()) {
+                log.debug("[{}] RAG 未检索到相关内容", instance.getName());
+                return userMessage;
+            }
+
+            String context = contents.stream()
+                    .map(c -> c.textSegment().text())
+                    .collect(Collectors.joining("\n\n"));
+
+            log.debug("[{}] RAG 检索到 {} 条相关内容", instance.getName(), contents.size());
+
+            return """
+                    以下是与问题相关的参考信息：
+                    ---
+                    %s
+                    ---
+
+                    用户问题：%s""".formatted(context, userMessage);
+        } catch (Exception e) {
+            log.warn("[{}] RAG 检索失败，回退为原始消息: {}", instance.getName(), e.getMessage());
+            return userMessage;
+        }
     }
 
     private static String truncate(String text, int maxLength) {

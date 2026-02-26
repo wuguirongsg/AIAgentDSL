@@ -6,7 +6,7 @@ import groovy.transform.CompileStatic
 /**
  * DSL 脚本基类。
  * 所有 .agent.groovy 脚本在编译时会自动继承此类。
- * 提供顶层关键字：agent(), tool()
+ * 提供顶层关键字：agent(), tool(), workflow()
  */
 abstract class DslBaseScript extends Script {
 
@@ -15,6 +15,9 @@ abstract class DslBaseScript extends Script {
 
     /** 编译后收集到的所有独立 ToolSpec */
     List<ToolSpec> standaloneTools = []
+
+    /** 编译后收集到的所有 WorkflowSpec */
+    List<WorkflowSpec> workflows = []
 
     /**
      * 顶层关键字：agent("name") { ... }
@@ -41,6 +44,18 @@ abstract class DslBaseScript extends Script {
     }
 
     /**
+     * 顶层关键字：workflow("name") { ... }
+     */
+    void workflow(String name, @DelegatesTo(WorkflowDelegate) Closure config) {
+        def spec = new WorkflowSpec(name)
+        def delegate = new WorkflowDelegate(spec)
+        config.delegate = delegate
+        config.resolveStrategy = Closure.DELEGATE_FIRST
+        config.call()
+        workflows << spec
+    }
+
+    /**
      * 内置函数：env("VAR_NAME") — 读取环境变量
      */
     static String env(String key) {
@@ -50,7 +65,7 @@ abstract class DslBaseScript extends Script {
         }
         if (value == null) {
             throw new com.agentdsl.core.exception.DslRuntimeException(
-                "ADSL-012", "环境变量未找到: ${key}")
+                'ADSL-012', "环境变量未找到: ${key}")
         }
         return value
     }
@@ -62,7 +77,7 @@ abstract class DslBaseScript extends Script {
         def f = new File(path)
         if (!f.exists()) {
             throw new com.agentdsl.core.exception.DslRuntimeException(
-                "ADSL-012", "文件未找到: ${path}")
+                'ADSL-012', "文件未找到: ${path}")
         }
         return f.text
     }
@@ -74,8 +89,9 @@ abstract class DslBaseScript extends Script {
         def stream = Thread.currentThread().contextClassLoader.getResourceAsStream(classpath)
         if (stream == null) {
             throw new com.agentdsl.core.exception.DslRuntimeException(
-                "ADSL-012", "Classpath 资源未找到: ${classpath}")
+                'ADSL-012', "Classpath 资源未找到: ${classpath}")
         }
         return stream.text
     }
+
 }

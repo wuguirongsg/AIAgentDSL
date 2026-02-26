@@ -3,6 +3,7 @@ package com.agentdsl.runtime;
 import com.agentdsl.core.spec.AgentSpec;
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.rag.content.retriever.ContentRetriever;
 import dev.langchain4j.service.tool.ToolExecutor;
 import dev.langchain4j.agent.tool.ToolSpecification;
 
@@ -21,6 +22,7 @@ public class AgentInstance {
     private final ChatMemory memory;
     private final List<ToolSpecification> toolSpecifications;
     private final Map<String, ToolExecutor> toolExecutors;
+    private final ContentRetriever contentRetriever;
     private final Instant registeredAt;
 
     public AgentInstance(AgentSpec spec,
@@ -28,11 +30,21 @@ public class AgentInstance {
             ChatMemory memory,
             List<ToolSpecification> toolSpecifications,
             Map<String, ToolExecutor> toolExecutors) {
+        this(spec, model, memory, toolSpecifications, toolExecutors, null);
+    }
+
+    public AgentInstance(AgentSpec spec,
+            ChatModel model,
+            ChatMemory memory,
+            List<ToolSpecification> toolSpecifications,
+            Map<String, ToolExecutor> toolExecutors,
+            ContentRetriever contentRetriever) {
         this.spec = spec;
         this.model = model;
         this.memory = memory;
         this.toolSpecifications = toolSpecifications;
         this.toolExecutors = toolExecutors;
+        this.contentRetriever = contentRetriever;
         this.registeredAt = Instant.now();
     }
 
@@ -66,6 +78,14 @@ public class AgentInstance {
 
     public boolean hasTools() {
         return toolSpecifications != null && !toolSpecifications.isEmpty();
+    }
+
+    public ContentRetriever getContentRetriever() {
+        return contentRetriever;
+    }
+
+    public boolean hasRag() {
+        return contentRetriever != null;
     }
 
     @Override

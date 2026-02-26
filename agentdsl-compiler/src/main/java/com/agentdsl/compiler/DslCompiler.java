@@ -4,6 +4,7 @@ import com.agentdsl.core.dsl.DslBaseScript;
 import com.agentdsl.core.exception.DslCompilationException;
 import com.agentdsl.core.spec.AgentSpec;
 import com.agentdsl.core.spec.ToolSpec;
+import com.agentdsl.core.spec.WorkflowSpec;
 import groovy.lang.GroovyShell;
 import groovy.lang.Script;
 import org.codehaus.groovy.control.CompilerConfiguration;
@@ -85,12 +86,14 @@ public class DslCompiler {
             if (script instanceof DslBaseScript dslScript) {
                 List<AgentSpec> agents = dslScript.getAgents();
                 List<ToolSpec> tools = dslScript.getStandaloneTools();
+                List<WorkflowSpec> workflows = dslScript.getWorkflows();
 
                 // 校验
-                DslValidator.validateAll(agents, tools);
+                DslValidator.validateAll(agents, tools, workflows);
 
-                log.info("DSL 编译成功: {} agents, {} tools", agents.size(), tools.size());
-                return new DslCompileResult(agents, tools);
+                log.info("DSL 编译成功: {} agents, {} tools, {} workflows",
+                        agents.size(), tools.size(), workflows.size());
+                return new DslCompileResult(agents, tools, workflows);
             } else {
                 throw new DslCompilationException("ADSL-002",
                         "脚本未继承 DslBaseScript，请检查编译器配置");

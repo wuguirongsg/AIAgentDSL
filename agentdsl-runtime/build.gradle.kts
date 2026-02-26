@@ -7,4 +7,8 @@ dependencies {
 
     // Runtime module directly uses LangChain4j types
     implementation("dev.langchain4j:langchain4j:$langchain4jVersion")
+
+    // Test
+    testImplementation("org.mockito:mockito-core:5.14.2")
+    testImplementation("org.mockito:mockito-junit-jupiter:5.14.2")
 }

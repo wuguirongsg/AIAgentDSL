@@ -4,6 +4,7 @@ import com.agentdsl.compiler.DslCompileResult;
 import com.agentdsl.compiler.DslCompiler;
 import com.agentdsl.core.spec.AgentSpec;
 import com.agentdsl.langchain4j.LangChainMemoryFactory;
+import com.agentdsl.langchain4j.LangChainRagFactory;
 import com.agentdsl.langchain4j.LangChainToolBridge;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -27,7 +28,8 @@ class AgentDslEngineTest {
     void setUp() {
         stubModel = new StubChatModel();
         StubModelFactory modelFactory = new StubModelFactory(stubModel);
-        registry = new AgentRegistry(modelFactory, new LangChainMemoryFactory(), new LangChainToolBridge());
+        registry = new AgentRegistry(modelFactory, new LangChainMemoryFactory(),
+                new LangChainToolBridge(), new LangChainRagFactory());
         executor = new AgentExecutor(registry);
         compiler = new DslCompiler();
     }

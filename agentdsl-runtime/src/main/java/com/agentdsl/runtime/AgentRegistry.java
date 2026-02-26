@@ -3,13 +3,16 @@ package com.agentdsl.runtime;
 import com.agentdsl.core.exception.DslRuntimeException;
 import com.agentdsl.core.spec.AgentSpec;
 import com.agentdsl.core.spec.ToolSpec;
+import com.agentdsl.core.spec.WorkflowSpec;
 import com.agentdsl.langchain4j.LangChainMemoryFactory;
 import com.agentdsl.langchain4j.LangChainModelFactory;
+import com.agentdsl.langchain4j.LangChainRagFactory;
 import com.agentdsl.langchain4j.LangChainToolBridge;
 import com.agentdsl.langchain4j.LangChainToolBridge.ToolEntry;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.rag.content.retriever.ContentRetriever;
 import dev.langchain4j.service.tool.ToolExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,21 +30,26 @@ public class AgentRegistry {
 
     private final ConcurrentHashMap<String, AgentInstance> agents = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, ToolSpec> globalTools = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, WorkflowSpec> workflows = new ConcurrentHashMap<>();
 
     private final LangChainModelFactory modelFactory;
     private final LangChainMemoryFactory memoryFactory;
     private final LangChainToolBridge toolBridge;
+    private final LangChainRagFactory ragFactory;
 
     public AgentRegistry() {
-        this(new LangChainModelFactory(), new LangChainMemoryFactory(), new LangChainToolBridge());
+        this(new LangChainModelFactory(), new LangChainMemoryFactory(),
+                new LangChainToolBridge(), new LangChainRagFactory());
     }
 
     public AgentRegistry(LangChainModelFactory modelFactory,
             LangChainMemoryFactory memoryFactory,
-            LangChainToolBridge toolBridge) {
+            LangChainToolBridge toolBridge,
+            LangChainRagFactory ragFactory) {
         this.modelFactory = modelFactory;
         this.memoryFactory = memoryFactory;
         this.toolBridge = toolBridge;
+        this.ragFactory = ragFactory;
     }
 
     /**
@@ -101,9 +109,16 @@ public class AgentRegistry {
             }
         }
 
-        // 4. 组装实例
+        // 4. 创建 RAG ContentRetriever（如果配置了 RAG）
+        ContentRetriever contentRetriever = null;
+        if (agentSpec.getRag() != null) {
+            contentRetriever = ragFactory.create(agentSpec.getRag());
+            log.info("Agent '{}' 已配置 RAG", agentSpec.getName());
+        }
+
+        // 5. 组装实例
         AgentInstance instance = new AgentInstance(
-                agentSpec, model, memory, toolSpecifications, toolExecutors);
+                agentSpec, model, memory, toolSpecifications, toolExecutors, contentRetriever);
 
         agents.put(agentSpec.getName(), instance);
         log.info("Agent '{}' 注册成功: {}", agentSpec.getName(), instance);
@@ -146,12 +161,58 @@ public class AgentRegistry {
         }
     }
 
+    // --- Workflow 注册 ---
+
+    /**
+     * 注册工作流。
+     */
+    public void registerWorkflow(WorkflowSpec workflow) {
+        log.info("注册 Workflow: {}", workflow.getName());
+        workflows.put(workflow.getName(), workflow);
+    }
+
+    /**
+     * 批量注册工作流。
+     */
+    public void registerWorkflows(List<WorkflowSpec> workflowList) {
+        for (WorkflowSpec workflow : workflowList) {
+            registerWorkflow(workflow);
+        }
+    }
+
+    /**
+     * 获取已注册的工作流。
+     */
+    public WorkflowSpec getWorkflow(String name) {
+        WorkflowSpec workflow = workflows.get(name);
+        if (workflow == null) {
+            throw new DslRuntimeException("ADSL-011",
+                    "未找到 Workflow: " + name + "。已注册的 Workflow: " + workflows.keySet());
+        }
+        return workflow;
+    }
+
+    /**
+     * 检查工作流是否已注册。
+     */
+    public boolean hasWorkflow(String name) {
+        return workflows.containsKey(name);
+    }
+
+    /**
+     * 获取所有已注册的工作流名称。
+     */
+    public Set<String> getWorkflowNames() {
+        return Collections.unmodifiableSet(workflows.keySet());
+    }
+
     /**
      * 清除所有注册。
      */
     public void clear() {
         agents.clear();
         globalTools.clear();
+        workflows.clear();
         log.info("注册中心已清空");
     }
 }

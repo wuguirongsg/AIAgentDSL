@@ -10,4 +10,8 @@ dependencies {
     // LangChain4j model providers
     implementation("dev.langchain4j:langchain4j-open-ai:$langchain4jVersion")
     implementation("dev.langchain4j:langchain4j-ollama:$langchain4jVersion")
+
+    // LangChain4j RAG — embedding model + in-memory store (beta versioning scheme)
+    implementation("dev.langchain4j:langchain4j-embeddings-all-minilm-l6-v2:1.11.0-beta19")
+    implementation("dev.langchain4j:langchain4j-embeddings:1.11.0-beta19")
 }

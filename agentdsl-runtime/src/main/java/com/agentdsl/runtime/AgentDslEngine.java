@@ -4,6 +4,7 @@ import com.agentdsl.compiler.DslCompileResult;
 import com.agentdsl.compiler.DslCompiler;
 import com.agentdsl.core.spec.AgentSpec;
 import com.agentdsl.core.spec.ToolSpec;
+import com.agentdsl.core.spec.WorkflowSpec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,6 +29,7 @@ public class AgentDslEngine implements AutoCloseable {
     private final DslCompiler compiler;
     private final AgentRegistry registry;
     private final AgentExecutor executor;
+    private final WorkflowExecutor workflowExecutor;
     private HotReloader hotReloader;
 
     public AgentDslEngine() {
@@ -41,6 +43,7 @@ public class AgentDslEngine implements AutoCloseable {
         this.compiler = new DslCompiler(enableSandbox);
         this.registry = new AgentRegistry();
         this.executor = new AgentExecutor(registry);
+        this.workflowExecutor = new WorkflowExecutor(executor, registry);
     }
 
     /**
@@ -50,6 +53,7 @@ public class AgentDslEngine implements AutoCloseable {
         this.compiler = compiler;
         this.registry = registry;
         this.executor = new AgentExecutor(registry);
+        this.workflowExecutor = new WorkflowExecutor(executor, registry);
     }
 
     /**
@@ -101,6 +105,24 @@ public class AgentDslEngine implements AutoCloseable {
     }
 
     /**
+     * 执行指定名称的工作流。
+     *
+     * @param workflowName 工作流名称
+     * @param input        初始输入
+     * @return 工作流执行结果
+     */
+    public WorkflowResult executeWorkflow(String workflowName, String input) {
+        return workflowExecutor.execute(workflowName, input);
+    }
+
+    /**
+     * 获取工作流执行器。
+     */
+    public WorkflowExecutor getWorkflowExecutor() {
+        return workflowExecutor;
+    }
+
+    /**
      * 获取注册中心。
      */
     public AgentRegistry getRegistry() {
@@ -144,5 +166,12 @@ public class AgentDslEngine implements AutoCloseable {
             registry.register(agent);
         }
         log.info("注册了 {} 个 Agent", agents.size());
+
+        // 最后注册工作流
+        List<WorkflowSpec> workflows = result.getWorkflows();
+        if (!workflows.isEmpty()) {
+            registry.registerWorkflows(workflows);
+            log.info("注册了 {} 个 Workflow", workflows.size());
+        }
     }
 }

@@ -2,21 +2,28 @@ package com.agentdsl.compiler;
 
 import com.agentdsl.core.spec.AgentSpec;
 import com.agentdsl.core.spec.ToolSpec;
+import com.agentdsl.core.spec.WorkflowSpec;
 
 import java.util.Collections;
 import java.util.List;
 
 /**
- * DSL 编译结果，包含解析出的所有 Agent 和独立 Tool 定义。
+ * DSL 编译结果，包含解析出的所有 Agent、独立 Tool 和 Workflow 定义。
  */
 public class DslCompileResult {
 
     private final List<AgentSpec> agents;
     private final List<ToolSpec> tools;
+    private final List<WorkflowSpec> workflows;
 
     public DslCompileResult(List<AgentSpec> agents, List<ToolSpec> tools) {
+        this(agents, tools, List.of());
+    }
+
+    public DslCompileResult(List<AgentSpec> agents, List<ToolSpec> tools, List<WorkflowSpec> workflows) {
         this.agents = Collections.unmodifiableList(agents);
         this.tools = Collections.unmodifiableList(tools);
+        this.workflows = Collections.unmodifiableList(workflows);
     }
 
     public List<AgentSpec> getAgents() {
@@ -25,6 +32,10 @@ public class DslCompileResult {
 
     public List<ToolSpec> getTools() {
         return tools;
+    }
+
+    public List<WorkflowSpec> getWorkflows() {
+        return workflows;
     }
 
     /**
@@ -37,8 +48,20 @@ public class DslCompileResult {
         return agents.get(0);
     }
 
+    /**
+     * 获取第一个 Workflow（便捷方法，适用于单 Workflow 脚本）。
+     */
+    public WorkflowSpec getFirstWorkflow() {
+        if (workflows.isEmpty()) {
+            return null;
+        }
+        return workflows.get(0);
+    }
+
     @Override
     public String toString() {
-        return "DslCompileResult{agents=" + agents.size() + ", tools=" + tools.size() + '}';
+        return "DslCompileResult{agents=" + agents.size() +
+                ", tools=" + tools.size() +
+                ", workflows=" + workflows.size() + '}';
     }
 }

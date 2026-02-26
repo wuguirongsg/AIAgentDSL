@@ -2,6 +2,7 @@ package com.agentdsl.runtime;
 
 import com.agentdsl.compiler.DslCompiler;
 import com.agentdsl.langchain4j.LangChainMemoryFactory;
+import com.agentdsl.langchain4j.LangChainRagFactory;
 import com.agentdsl.langchain4j.LangChainToolBridge;
 import org.junit.jupiter.api.*;
 
@@ -28,7 +29,8 @@ class HotReloaderTest {
         registry = new AgentRegistry(
                 new StubModelFactory(new StubChatModel().addTextResponse("test")),
                 new LangChainMemoryFactory(),
-                new LangChainToolBridge());
+                new LangChainToolBridge(),
+                new LangChainRagFactory());
         reloader = new HotReloader(compiler, registry);
     }
 
