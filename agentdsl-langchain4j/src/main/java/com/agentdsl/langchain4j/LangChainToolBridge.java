@@ -71,17 +71,27 @@ public class LangChainToolBridge {
 
         ToolSpecification specification = specBuilder.build();
 
-        // 2. 构建 ToolExecutor
+        // 2. 构建 ToolExecutor（含指标采集）
         ToolExecutor executor = (request, memoryId) -> {
             log.debug("执行工具 '{}', 参数: {}", toolSpec.getName(), request.arguments());
 
             Map<String, Object> parsedParams = parseArguments(request);
             String validationError = validateParameters(toolSpec, parsedParams);
             if (validationError != null) {
+                // 参数校验失败也记录指标
+                com.agentdsl.core.metrics.MetricsCollector.getInstance().record(
+                        new com.agentdsl.core.metrics.ToolMetrics(
+                                toolSpec.getName(), 0, false, "ValidationError",
+                                parsedParams.size(), 0));
                 return "Error: " + validationError;
             }
 
             int timeout = toolSpec.getTimeoutSeconds() > 0 ? toolSpec.getTimeoutSeconds() : 30;
+            long startMs = System.currentTimeMillis();
+
+            // TODO [TRACE-EXT-3] 若对接 OpenTelemetry，在此创建子 Span：
+            // Span span = tracer.spanBuilder("tool." + toolSpec.getName())
+            // .setAttribute("tool.timeout", timeout).startSpan();
 
             CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
                 try {
@@ -107,14 +117,49 @@ public class LangChainToolBridge {
             });
 
             try {
-                return future.get(timeout, TimeUnit.SECONDS);
+                String result = future.get(timeout, TimeUnit.SECONDS);
+                long durationMs = System.currentTimeMillis() - startMs;
+
+                // 记录成功指标
+                // TODO [METRICS-EXT-4] 此处可触发 SPI 导出：将指标推送给外部观测系统
+                // TODO [TRACE-EXT-3] 结束子 Span：span.setAttribute("tool.success", true).end();
+                com.agentdsl.core.metrics.MetricsCollector.getInstance().record(
+                        new com.agentdsl.core.metrics.ToolMetrics(
+                                toolSpec.getName(), durationMs, true, null,
+                                parsedParams.size(), result != null ? result.length() : 0));
+
+                return result;
             } catch (TimeoutException e) {
                 future.cancel(true);
-                return handleTimeoutOrError(toolSpec, "Timeout exception: Execution exceeded " + timeout + " seconds");
-            } catch (Exception e) {
-                log.error("工具 '{}' 执行失败", toolSpec.getName(), e.getCause() != null ? e.getCause() : e);
+                long durationMs = System.currentTimeMillis() - startMs;
+
+                // 记录超时指标
+                com.agentdsl.core.metrics.MetricsCollector.getInstance().record(
+                        new com.agentdsl.core.metrics.ToolMetrics(
+                                toolSpec.getName(), durationMs, false, "TimeoutException",
+                                parsedParams.size(), 0));
+
                 return handleTimeoutOrError(toolSpec,
-                        "Error executing tool: " + (e.getCause() != null ? e.getCause().getMessage() : e.getMessage()));
+                        "Timeout exception: Execution exceeded " + timeout + " seconds");
+            } catch (Exception e) {
+                long durationMs = System.currentTimeMillis() - startMs;
+                String errorType = e.getCause() != null
+                        ? e.getCause().getClass().getSimpleName()
+                        : e.getClass().getSimpleName();
+
+                // 记录异常指标
+                // TODO [TRACE-EXT-3] 结束子 Span：span.setStatus(StatusCode.ERROR).end();
+                com.agentdsl.core.metrics.MetricsCollector.getInstance().record(
+                        new com.agentdsl.core.metrics.ToolMetrics(
+                                toolSpec.getName(), durationMs, false, errorType,
+                                parsedParams.size(), 0));
+
+                log.error("工具 '{}' 执行失败", toolSpec.getName(),
+                        e.getCause() != null ? e.getCause() : e);
+                return handleTimeoutOrError(toolSpec,
+                        "Error executing tool: " + (e.getCause() != null
+                                ? e.getCause().getMessage()
+                                : e.getMessage()));
             }
         };
 

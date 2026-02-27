@@ -268,7 +268,7 @@ class WorkflowDslParsingTest {
                         agent("reviewer") {
                             model {
                                 provider "ollama"
-                                modelName "qwen2.5"
+                                modelName "qwen:0.5b-chat"
                             }
                         }
 

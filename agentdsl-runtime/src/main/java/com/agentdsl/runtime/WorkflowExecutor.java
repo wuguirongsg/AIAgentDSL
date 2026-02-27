@@ -3,6 +3,8 @@ package com.agentdsl.runtime;
 import com.agentdsl.core.exception.DslRuntimeException;
 import com.agentdsl.core.spec.StepSpec;
 import com.agentdsl.core.spec.WorkflowSpec;
+import com.agentdsl.runtime.metrics.ExecutionTrace;
+import com.agentdsl.runtime.metrics.StepTrace;
 import groovy.lang.Closure;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,19 +57,38 @@ public class WorkflowExecutor {
      *
      * @param workflow 工作流规范
      * @param input    初始输入
-     * @return 执行结果
+     * @return 执行结果（含 ExecutionTrace）
      */
     public WorkflowResult execute(WorkflowSpec workflow, String input) {
         log.info("[Workflow:{}] 开始执行, 输入: {}", workflow.getName(), truncate(input, 100));
 
         WorkflowContext ctx = new WorkflowContext(input);
 
-        for (StepSpec step : workflow.getSteps()) {
-            executeStep(step, ctx);
+        // 创建执行追踪对象，注入到上下文
+        //
+        // TODO [TRACE-EXT-3] 如果对接 OpenTelemetry，在此创建根 Span：
+        // Span rootSpan = tracer.spanBuilder("workflow." +
+        // workflow.getName()).startSpan();
+        // 并将 rootSpan 和 executionTrace 一起注入到 WorkflowContext
+        ExecutionTrace trace = new ExecutionTrace(workflow.getName());
+        ctx.setExecutionTrace(trace);
+
+        String finalStatus = "completed";
+        try {
+            for (StepSpec step : workflow.getSteps()) {
+                executeStep(step, ctx);
+            }
+        } catch (Exception e) {
+            finalStatus = "failed";
+            trace.complete("failed");
+            log.error("[Workflow:{}] 执行失败", workflow.getName(), e);
+            throw e;
         }
 
+        trace.complete(finalStatus);
         WorkflowResult result = ctx.toResult();
-        log.info("[Workflow:{}] 执行完成, 结果: {}", workflow.getName(), result);
+        log.info("[Workflow:{}] 执行完成, 耐时={}ms, 结果: {}",
+                workflow.getName(), trace.getTotalDurationMs(), result);
         return result;
     }
 
@@ -84,24 +105,58 @@ public class WorkflowExecutor {
     }
 
     /**
-     * 顺序执行单个步骤。
+     * 顺序执行单个步骤，并记录 StepTrace。
      */
     private void executeSequential(StepSpec step, WorkflowContext ctx) {
         String agentName = step.getAgentRef();
         log.debug("[Step:{}] 顺序执行, agent={}", step.getName(), agentName);
 
+        // 记录步骤开始时间
+        long stepStart = System.currentTimeMillis();
+        String inputSummary = truncate(
+                ctx.getLastOutput() != null ? ctx.getLastOutput().toString() : "", 200);
+
         // 1. 应用输入转换
         String input = applyInputTransform(step, ctx);
 
-        // 2. 调用 Agent
-        String output = agentExecutor.chat(agentName, input);
+        String stepStatus = "completed";
+        Object finalOutput;
+        try {
+            // 2. 调用 Agent
+            String output = agentExecutor.chat(agentName, input);
 
-        // 3. 应用输出转换
-        Object finalOutput = applyOutputTransform(step, output);
+            // 3. 应用输出转换
+            finalOutput = applyOutputTransform(step, output);
 
-        // 4. 记录结果
-        ctx.putStepResult(step.getName(), finalOutput);
-        log.debug("[Step:{}] 完成, 输出: {}", step.getName(), truncate(finalOutput.toString(), 100));
+            // 4. 记录结果
+            ctx.putStepResult(step.getName(), finalOutput);
+        } catch (Exception e) {
+            stepStatus = "failed";
+            long durationMs = System.currentTimeMillis() - stepStart;
+            recordStepTrace(ctx, step.getName(), agentName, inputSummary, "ERROR", durationMs, stepStatus);
+            throw e;
+        }
+
+        long durationMs = System.currentTimeMillis() - stepStart;
+        String outputSummary = truncate(finalOutput.toString(), 200);
+        recordStepTrace(ctx, step.getName(), agentName, inputSummary, outputSummary, durationMs, stepStatus);
+        log.debug("[Step:{}] 完成, 耐时={}ms, 输出: {}", step.getName(), durationMs,
+                truncate(finalOutput.toString(), 100));
+    }
+
+    /**
+     * 记录步骤追踪到 ExecutionTrace。
+     *
+     * <p>
+     * TODO [TRACE-EXT-1] 如果对接 OpenTelemetry，在此为每个步骤创建子 Span
+     */
+    private void recordStepTrace(WorkflowContext ctx, String stepName, String agentName,
+            String inputSummary, String outputSummary, long durationMs, String status) {
+        ExecutionTrace trace = ctx.getExecutionTrace();
+        if (trace != null) {
+            trace.addStep(new StepTrace(stepName, agentName, inputSummary,
+                    outputSummary, durationMs, status));
+        }
     }
 
     /**

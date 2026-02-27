@@ -15,7 +15,7 @@
 agent('translator') {
     model {
         provider 'ollama'
-        modelName 'qwen3:4b'
+        modelName 'qwen:0.5b-chat'
     }
     systemPrompt '你是一个专业的中英文翻译员。用户给你中文，你翻译成英文。只输出翻译结果，不要解释。'
 }
@@ -23,7 +23,7 @@ agent('translator') {
 agent('reviewer') {
     model {
         provider 'ollama'
-        modelName 'qwen3:4b'
+        modelName 'qwen:0.5b-chat'
     }
     systemPrompt '''你是翻译质量审核员。
 审核翻译质量。
@@ -34,7 +34,7 @@ agent('reviewer') {
 agent('sentiment-analyzer') {
     model {
         provider 'ollama'
-        modelName 'qwen3:4b'
+        modelName 'qwen:0.5b-chat'
     }
     systemPrompt '分析文本的情感倾向，只返回 positive、negative 或 neutral 三个词之一。'
 }
@@ -42,7 +42,7 @@ agent('sentiment-analyzer') {
 agent('keyword-extractor') {
     model {
         provider 'ollama'
-        modelName 'qwen3:4b'
+        modelName 'qwen:0.5b-chat'
     }
     systemPrompt '提取文本中最重要的 3-5 个关键词，用逗号分隔，不要其他内容。'
 }
@@ -50,7 +50,7 @@ agent('keyword-extractor') {
 agent('report-generator') {
     model {
         provider 'ollama'
-        modelName 'qwen3:4b'
+        modelName 'qwen:0.5b-chat'
     }
     systemPrompt '根据提供的分析结果，用两三句话生成一份简洁的总结报告。'
 }
@@ -58,7 +58,7 @@ agent('report-generator') {
 agent('premium-formatter') {
     model {
         provider 'ollama'
-        modelName 'qwen3:4b'
+        modelName 'qwen:0.5b-chat'
     }
     systemPrompt '将内容润色为精致、正式的书面语格式输出。'
 }
@@ -66,7 +66,7 @@ agent('premium-formatter') {
 agent('standard-formatter') {
     model {
         provider 'ollama'
-        modelName 'qwen3:4b'
+        modelName 'qwen:0.5b-chat'
     }
     systemPrompt '将内容整理为清晰、简洁的标准格式输出。'
 }

@@ -60,7 +60,7 @@ class HotReloaderTest {
                     agent("hot-agent") {
                         model {
                             provider "ollama"
-                            modelName "qwen2.5"
+                            modelName "qwen:0.5b-chat"
                         }
                         systemPrompt "你好"
                     }
@@ -87,7 +87,7 @@ class HotReloaderTest {
                     agent("new-agent") {
                         model {
                             provider "ollama"
-                            modelName "qwen2.5"
+                            modelName "qwen:0.5b-chat"
                         }
                         systemPrompt "auto loaded"
                     }
@@ -107,7 +107,7 @@ class HotReloaderTest {
                     agent("reload-agent") {
                         model {
                             provider "ollama"
-                            modelName "qwen2.5"
+                            modelName "qwen:0.5b-chat"
                         }
                         systemPrompt "v1"
                     }

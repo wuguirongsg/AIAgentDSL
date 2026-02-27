@@ -60,7 +60,7 @@ class AgentDslEngineTest {
                         agent("greeter") {
                             model {
                                 provider "ollama"
-                                modelName "qwen2.5"
+                                modelName "qwen:0.5b-chat"
                             }
                             systemPrompt "你是一个友好的问候助手。"
                         }
@@ -113,7 +113,7 @@ class AgentDslEngineTest {
                         agent("tool-agent") {
                             model {
                                 provider "ollama"
-                                modelName "qwen2.5"
+                                modelName "qwen:0.5b-chat"
                             }
                             systemPrompt "你是助手。"
 
@@ -161,7 +161,7 @@ class AgentDslEngineTest {
                         agent("weather-bot") {
                             model {
                                 provider "ollama"
-                                modelName "qwen2.5"
+                                modelName "qwen:0.5b-chat"
                             }
                             tools {
                                 include "weather"
@@ -200,7 +200,7 @@ class AgentDslEngineTest {
                         agent("agent-b") {
                             model {
                                 provider "ollama"
-                                modelName "qwen2.5"
+                                modelName "qwen:0.5b-chat"
                             }
                             systemPrompt "你是 Agent B。"
                         }
@@ -235,7 +235,7 @@ class AgentDslEngineTest {
                         agent("memory-agent") {
                             model {
                                 provider "ollama"
-                                modelName "qwen2.5"
+                                modelName "qwen:0.5b-chat"
                             }
                             memory {
                                 type "message_window"
@@ -257,7 +257,7 @@ class AgentDslEngineTest {
                         agent("no-memory") {
                             model {
                                 provider "ollama"
-                                modelName "qwen2.5"
+                                modelName "qwen:0.5b-chat"
                             }
                         }
                     """;
@@ -281,7 +281,7 @@ class AgentDslEngineTest {
                         agent("test") {
                             model {
                                 provider "ollama"
-                                modelName "qwen2.5"
+                                modelName "qwen:0.5b-chat"
                             }
                         }
                     """;
@@ -307,7 +307,7 @@ class AgentDslEngineTest {
                         agent("temp") {
                             model {
                                 provider "ollama"
-                                modelName "qwen2.5"
+                                modelName "qwen:0.5b-chat"
                             }
                         }
                     """;

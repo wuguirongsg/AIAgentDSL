@@ -6,7 +6,7 @@ agent('tools-demo') {
 
     model {
         provider 'ollama'
-        modelName 'qwen3:4b'
+        modelName 'qwen:0.5b-chat'
     }
 
     systemPrompt '''你是一个全能助手，可以：

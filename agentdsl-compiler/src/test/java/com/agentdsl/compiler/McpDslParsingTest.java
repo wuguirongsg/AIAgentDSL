@@ -30,7 +30,7 @@ class McpDslParsingTest {
                     description "Agent with MCP"
                     model {
                         provider "ollama"
-                        modelName "qwen3:4b"
+                        modelName "qwen:0.5b-chat"
                     }
                     mcp {
                         server("github") {
@@ -105,7 +105,7 @@ class McpDslParsingTest {
                     description "Agent with multiple MCP servers"
                     model {
                         provider "ollama"
-                        modelName "qwen3:4b"
+                        modelName "qwen:0.5b-chat"
                     }
                     mcp {
                         server("github") {
@@ -144,7 +144,7 @@ class McpDslParsingTest {
                     description "Agent without MCP"
                     model {
                         provider "ollama"
-                        modelName "qwen3:4b"
+                        modelName "qwen:0.5b-chat"
                     }
                 }
                 """;

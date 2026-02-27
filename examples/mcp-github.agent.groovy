@@ -17,7 +17,7 @@ agent('github-assistant') {
 
     model {
         provider 'ollama'
-        modelName 'qwen3:4b'
+        modelName 'qwen:0.5b-chat'
     }
 
     systemPrompt '''你是一个 GitHub 助手。
@@ -48,7 +48,7 @@ agent('multi-tool-assistant') {
 
     model {
         provider 'ollama'
-        modelName 'qwen3:4b'
+        modelName 'qwen:0.5b-chat'
     }
 
     systemPrompt '''你是一个多功能助手，可以同时访问 GitHub 和本地文件系统。

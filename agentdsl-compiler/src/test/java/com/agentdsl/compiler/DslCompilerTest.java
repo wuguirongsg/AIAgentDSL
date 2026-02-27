@@ -34,7 +34,7 @@ class DslCompilerTest {
                         agent("greeter") {
                             model {
                                 provider "ollama"
-                                modelName "qwen2.5"
+                                modelName "qwen:0.5b-chat"
                             }
                             systemPrompt "你好"
                         }
@@ -48,7 +48,7 @@ class DslCompilerTest {
             AgentSpec agent = result.getFirstAgent();
             assertEquals("greeter", agent.getName());
             assertEquals("ollama", agent.getModel().getProvider());
-            assertEquals("qwen2.5", agent.getModel().getModelName());
+            assertEquals("qwen:0.5b-chat", agent.getModel().getModelName());
             assertEquals("你好", agent.getSystemPrompt());
         }
 
@@ -415,7 +415,7 @@ class DslCompilerTest {
                         agent("agent-b") {
                             model {
                                 provider "ollama"
-                                modelName "qwen2.5"
+                                modelName "qwen:0.5b-chat"
                             }
                         }
                     """;

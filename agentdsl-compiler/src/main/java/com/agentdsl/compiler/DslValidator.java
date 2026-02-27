@@ -3,6 +3,7 @@ package com.agentdsl.compiler;
 import com.agentdsl.core.exception.DslCompilationException;
 import com.agentdsl.core.spec.AgentSpec;
 import com.agentdsl.core.spec.ParameterSpec;
+import com.agentdsl.core.spec.StepSpec;
 import com.agentdsl.core.spec.ToolSpec;
 import com.agentdsl.core.spec.WorkflowSpec;
 
@@ -10,6 +11,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
+import java.util.stream.Collectors;
 
 /**
  * DSL 语义校验器。
@@ -25,7 +27,7 @@ public class DslValidator {
     }
 
     /**
-     * 校验所有编译产出物。
+     * 校验所有编译产出物，包括引用存在性校验。
      */
     public static void validateAll(List<AgentSpec> agents, List<ToolSpec> tools,
             List<WorkflowSpec> workflows) {
@@ -37,6 +39,16 @@ public class DslValidator {
         }
         for (WorkflowSpec workflow : workflows) {
             validateWorkflow(workflow);
+        }
+        // 引用存在性校验（编译期发现未定义的引用）
+        // 注意：只有当脚本中同时包含工具/Agent 定义时才进行交叉验证。
+        // 若脚本中没有独立 Tool 定义（仅有 Agent 内联工具），跳过 toolRef 校验。
+        // 若脚本中没有 Agent 定义（如独立 workflow 脚本），跳过 agentRef 校验。
+        if (!tools.isEmpty()) {
+            validateToolReferences(agents, tools);
+        }
+        if (!agents.isEmpty() && !workflows.isEmpty()) {
+            validateWorkflowAgentReferences(workflows, agents);
         }
     }
 
@@ -161,6 +173,105 @@ public class DslValidator {
         if (workflow.getSteps() == null || workflow.getSteps().isEmpty()) {
             throw new DslCompilationException("ADSL-001",
                     "Workflow '" + workflow.getName() + "' 缺少必填项: steps（至少需要 1 个步骤）");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // 5.6 工具引用存在性校验
+    // -----------------------------------------------------------------------
+
+    /**
+     * 校验 Agent 通过 {@code include} 引用的工具名称是否在已定义的 Tool 列表中存在。
+     *
+     * <p>
+     * 如果 Agent 引用了未定义的工具，将在编译期抛出 {@link DslCompilationException}，
+     * 防止错误配置流入运行截阶段。
+     *
+     * <p>
+     * 注意：内置工具（{@code BuiltinToolRegistry} 提供的 http_get 等）
+     * 在运行时才注册，编译期不在 {@code tools} 列表中，因此当前只校验在脚本中
+     * 显式定义的工具引用。
+     */
+    public static void validateToolReferences(List<AgentSpec> agents, List<ToolSpec> tools) {
+        Set<String> definedToolNames = tools.stream()
+                .map(ToolSpec::getName)
+                .collect(Collectors.toSet());
+
+        for (AgentSpec agent : agents) {
+            if (agent.getToolRefs() == null)
+                continue;
+            for (String ref : agent.getToolRefs()) {
+                if (!definedToolNames.contains(ref)) {
+                    throw new DslCompilationException("ADSL-003",
+                            "Agent '" + agent.getName() + "' 引用了未定义的工具: '" + ref
+                                    + "'，已定义的工具: " + definedToolNames);
+                }
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // 5.7 工作流 Agent 引用校验
+    // -----------------------------------------------------------------------
+
+    /**
+     * 校验 Workflow 中每个 step 引用的 Agent 名称是否在已定义的 Agent 列表中存在。
+     *
+     * <p>
+     * 递归检查显式步骤（Sequential）中的 agentRef。
+     * 条件/并行/循环模块内的子步骤同样进行检查。
+     */
+    public static void validateWorkflowAgentReferences(
+            List<WorkflowSpec> workflows, List<AgentSpec> agents) {
+        Set<String> definedAgentNames = agents.stream()
+                .map(AgentSpec::getName)
+                .collect(Collectors.toSet());
+
+        for (WorkflowSpec workflow : workflows) {
+            if (workflow.getSteps() == null)
+                continue;
+            for (StepSpec step : workflow.getSteps()) {
+                validateStepAgentRef(workflow.getName(), step, definedAgentNames);
+            }
+        }
+    }
+
+    /**
+     * 递归校验单个步骤的 Agent 引用。
+     */
+    private static void validateStepAgentRef(
+            String workflowName, StepSpec step, Set<String> definedAgentNames) {
+        // 顺序步骤：检查 agentRef
+        if (step.getAgentRef() != null && !step.getAgentRef().isBlank()) {
+            if (!definedAgentNames.contains(step.getAgentRef())) {
+                throw new DslCompilationException("ADSL-003",
+                        "Workflow '" + workflowName + "' 的步骤 '" + step.getName()
+                                + "' 引用了未定义的 Agent: '" + step.getAgentRef()
+                                + "'，已定义的 Agent: " + definedAgentNames);
+            }
+        }
+
+        // 条件分支内的子步骤
+        if (step.getBranches() != null) {
+            step.getBranches().values().forEach(branchSteps -> {
+                for (StepSpec subStep : branchSteps) {
+                    validateStepAgentRef(workflowName, subStep, definedAgentNames);
+                }
+            });
+        }
+
+        // 并行步骤
+        if (step.getParallelSteps() != null) {
+            for (StepSpec subStep : step.getParallelSteps()) {
+                validateStepAgentRef(workflowName, subStep, definedAgentNames);
+            }
+        }
+
+        // 循环内的步骤
+        if (step.getLoopBody() != null) {
+            for (StepSpec subStep : step.getLoopBody()) {
+                validateStepAgentRef(workflowName, subStep, definedAgentNames);
+            }
         }
     }
 }

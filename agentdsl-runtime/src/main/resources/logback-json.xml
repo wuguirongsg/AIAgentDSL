@@ -1,0 +1,62 @@
+<configuration>
+
+    <!-- ============================================================
+         AgentDSL JSON 结构化日志配置（生产/ELK 场景）
+         ============================================================
+         启用方式：
+           java -Dlogback.configurationFile=logback-json.xml -jar agentdsl.jar
+
+         TODO [METRICS-EXT-8] 对接外部日志平台（各平台按 JSON 日志接入即可）：
+           - ELK（Elasticsearch + Logstash + Kibana）：
+               Filebeat 采集 agentdsl.log → Logstash 解析 → Elasticsearch 索引
+               Kibana Dashboard 可实现工具调用耗时、成功率实时可视化
+           - Grafana Loki：
+               Promtail 采集日志 → Loki 存储 → Grafana 面板查询
+           - 阿里云 SLS / AWS CloudWatch / Datadog Log Management：
+               直接接入 JSON 日志 agent 即可，无需改代码
+           - 本地快速查询：
+               jq '.[] | select(.loggerName | startswith("com.agentdsl.langchain4j"))
+                       | {time: .instant.epochSecond, tool: .message}' agentdsl.log
+
+         TODO [METRICS-EXT-9] MDC 字段扩展 — 在 WorkflowExecutor 和 AgentExecutor 中
+           配合 MDC.put("workflowName", workflow.getName()) / MDC.put("agentName", agentName)
+           即可让每条日志自动带上业务维度标签，便于按工作流/Agent 过滤
+         ============================================================
+
+         依赖（需在 build.gradle.kts 中添加）：
+           runtimeOnly("net.logstash.logback:logstash-logback-encoder:8.0")
+         ============================================================ -->
+
+    <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <!-- 自定义字段：标识日志来源为 AgentDSL -->
+            <customFields>{"app":"agentdsl"}</customFields>
+            <!-- 时间戳格式 -->
+            <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSSZ</timestampPattern>
+        </encoder>
+    </appender>
+
+    <!-- 同时写入本地文件，便于 Filebeat / 其他 agent 采集
+         TODO [METRICS-EXT-8] 启用此 appender 并配置 Filebeat 采集 agentdsl.log -->
+    <!--
+    <appender name="JSON_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/agentdsl.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>logs/agentdsl.%d{yyyy-MM-dd}.log.gz</fileNamePattern>
+            <maxHistory>30</maxHistory>
+        </rollingPolicy>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <customFields>{"app":"agentdsl"}</customFields>
+        </encoder>
+    </appender>
+    -->
+
+    <logger name="com.agentdsl" level="INFO"/>
+    <logger name="dev.langchain4j" level="WARN"/>
+
+    <root level="WARN">
+        <appender-ref ref="JSON_CONSOLE"/>
+        <!-- <appender-ref ref="JSON_FILE"/> -->
+    </root>
+
+</configuration>

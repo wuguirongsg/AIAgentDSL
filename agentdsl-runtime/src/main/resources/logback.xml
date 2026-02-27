@@ -1,0 +1,26 @@
+<configuration>
+
+    <!-- ============================================================
+         AgentDSL 标准控制台日志配置
+         ============================================================
+         切换为 JSON 结构化日志（生产/ELK 场景）：
+           java -Dlogback.configurationFile=logback-json.xml -jar agentdsl.jar
+         ============================================================ -->
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %highlight(%-5level) [%thread] %cyan(%logger{36}) - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- AgentDSL 自身日志级别 -->
+    <logger name="com.agentdsl" level="INFO"/>
+
+    <!-- LangChain4j 框架日志（通常只关注 WARN+） -->
+    <logger name="dev.langchain4j" level="WARN"/>
+
+    <root level="WARN">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+</configuration>

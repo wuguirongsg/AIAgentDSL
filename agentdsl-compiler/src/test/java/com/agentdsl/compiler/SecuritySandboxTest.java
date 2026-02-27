@@ -86,7 +86,7 @@ class SecuritySandboxTest {
                     agent("safe-agent") {
                         model {
                             provider "ollama"
-                            modelName "qwen2.5"
+                            modelName "qwen:0.5b-chat"
                         }
                         systemPrompt "你好"
                     }
