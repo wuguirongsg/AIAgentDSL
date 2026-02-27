@@ -126,6 +126,45 @@ class LangChainToolBridgeTest {
     }
 
     @Test
+    @DisplayName("转换带参数工具 — 预校验测试")
+    void shouldValidateParameters() {
+        ToolSpec spec = new ToolSpec("validate");
+        spec.setDescription("校验工具");
+
+        ParameterSpec p1 = new ParameterSpec();
+        p1.setName("status");
+        p1.setType("string");
+        p1.setEnumValues("ok,fail");
+
+        spec.setParameters(List.of(p1));
+        spec.setExecuteBody(new Closure<String>(null) {
+            @Override
+            public String call(Object... args) {
+                return "executed";
+            }
+        });
+
+        LangChainToolBridge.ToolEntry entry = bridge.convert(spec);
+
+        dev.langchain4j.agent.tool.ToolExecutionRequest requestPass = dev.langchain4j.agent.tool.ToolExecutionRequest
+                .builder()
+                .id("test-1")
+                .name("validate")
+                .arguments("{\"status\":\"ok\"}")
+                .build();
+        assertEquals("executed", entry.executor().execute(requestPass, "test-memory"));
+
+        dev.langchain4j.agent.tool.ToolExecutionRequest requestFail = dev.langchain4j.agent.tool.ToolExecutionRequest
+                .builder()
+                .id("test-2")
+                .name("validate")
+                .arguments("{\"status\":\"invalid\"}")
+                .build();
+        assertTrue(entry.executor().execute(requestFail, "test-memory")
+                .contains("Error: Parameter 'status' must be one of: ok,fail"));
+    }
+
+    @Test
     @DisplayName("批量转换多个工具")
     void shouldConvertMultipleTools() {
         ToolSpec t1 = new ToolSpec("tool-a");

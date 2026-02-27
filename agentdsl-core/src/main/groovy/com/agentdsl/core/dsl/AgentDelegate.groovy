@@ -81,4 +81,14 @@ class AgentDelegate {
         config.call()
         spec.outputSchema = schemaSpec
     }
+
+    /** mcp { server("name") { ... } } */
+    void mcp(@DelegatesTo(McpBlockDelegate) Closure config) {
+        def delegate = new McpBlockDelegate()
+        config.delegate = delegate
+        config.resolveStrategy = Closure.DELEGATE_FIRST
+        config.call()
+        spec.mcp = delegate.spec
+    }
+
 }

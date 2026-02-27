@@ -22,10 +22,20 @@ public class WorkflowExecutor {
 
     private final AgentExecutor agentExecutor;
     private final AgentRegistry registry;
+    private final int maxParallelThreads;
 
     public WorkflowExecutor(AgentExecutor agentExecutor, AgentRegistry registry) {
+        this(agentExecutor, registry, Runtime.getRuntime().availableProcessors());
+    }
+
+    /**
+     * @param maxParallelThreads 并行步骤最大线程数
+     */
+    public WorkflowExecutor(AgentExecutor agentExecutor, AgentRegistry registry, int maxParallelThreads) {
         this.agentExecutor = agentExecutor;
         this.registry = registry;
+        this.maxParallelThreads = maxParallelThreads > 0 ? maxParallelThreads
+                : Runtime.getRuntime().availableProcessors();
     }
 
     /**
@@ -102,7 +112,7 @@ public class WorkflowExecutor {
         log.debug("[Parallel] 并行执行 {} 个步骤", parallelSteps.size());
 
         ExecutorService executor = Executors.newFixedThreadPool(
-                Math.min(parallelSteps.size(), Runtime.getRuntime().availableProcessors()));
+                Math.min(parallelSteps.size(), maxParallelThreads));
 
         try {
             // 提交所有并行任务

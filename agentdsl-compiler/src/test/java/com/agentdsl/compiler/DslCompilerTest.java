@@ -244,6 +244,72 @@ class DslCompilerTest {
             assertEquals("limit", tool.getParameters().get(1).getName());
             assertEquals("integer", tool.getParameters().get(1).getType());
         }
+
+        @Test
+        @DisplayName("工具带增强参数和配置")
+        void shouldParseToolWithEnhancedFeatures() {
+            String dsl = """
+                        tool("enhanced") {
+                            description "增强工具"
+                            returns "string", "返回结果"
+                            timeout 60
+
+                            permissions {
+                                network "https://api.github.com/*"
+                                file "/tmp/*"
+                                database "mydb"
+                            }
+
+                            parameter {
+                                name "age"
+                                type "integer"
+                                min 0
+                                max 120
+                                defaultValue 18
+                            }
+
+                            parameter {
+                                name "status"
+                                type "string"
+                                enumValues "active", "inactive"
+                            }
+
+                            parameter {
+                                name "email"
+                                type "string"
+                                pattern '^[A-Za-z0-9+_.-]+@(.+)$'
+                            }
+
+                            execute { params -> "ok" }
+                            onError { err -> "error: " + err }
+                        }
+                    """;
+
+            DslCompileResult result = compiler.compile(dsl);
+            ToolSpec tool = result.getTools().get(0);
+
+            assertEquals("string", tool.getReturnType());
+            assertEquals("返回结果", tool.getReturnDescription());
+            assertEquals(60, tool.getTimeoutSeconds());
+            assertNotNull(tool.getPermissions());
+            assertTrue(tool.getPermissions().getNetworkPatterns().contains("https://api.github.com/*"));
+            assertTrue(tool.getPermissions().getFilePatterns().contains("/tmp/*"));
+            assertTrue(tool.getPermissions().getDatabases().contains("mydb"));
+
+            assertEquals(3, tool.getParameters().size());
+            assertEquals("age", tool.getParameters().get(0).getName());
+            assertEquals(0.0, tool.getParameters().get(0).getMin());
+            assertEquals(120.0, tool.getParameters().get(0).getMax());
+            assertEquals(18, tool.getParameters().get(0).getDefaultValue());
+
+            assertEquals("status", tool.getParameters().get(1).getName());
+            assertEquals("active,inactive", tool.getParameters().get(1).getEnumValues());
+
+            assertEquals("email", tool.getParameters().get(2).getName());
+            assertEquals("^[A-Za-z0-9+_.-]+@(.+)$", tool.getParameters().get(2).getPattern());
+
+            assertNotNull(tool.getOnErrorHandler());
+        }
     }
 
     @Nested

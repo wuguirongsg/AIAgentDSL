@@ -19,7 +19,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -82,10 +84,13 @@ public class AgentExecutor {
             instance.getMemory().add(userMsg);
         }
 
-        // 2. 工具调用循环
+        // 2. 收集工具
         List<ToolSpecification> tools = instance.hasTools()
-                ? instance.getToolSpecifications()
-                : null;
+                ? new ArrayList<>(instance.getToolSpecifications())
+                : new ArrayList<>();
+        Map<String, ToolExecutor> allToolExecutors = instance.hasTools()
+                ? new HashMap<>(instance.getToolExecutors())
+                : new HashMap<>();
 
         for (int iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
             ChatResponse response;
@@ -93,7 +98,7 @@ public class AgentExecutor {
             try {
                 ChatRequest.Builder requestBuilder = ChatRequest.builder()
                         .messages(messages);
-                if (tools != null && !tools.isEmpty()) {
+                if (!tools.isEmpty()) {
                     requestBuilder.toolSpecifications(tools);
                 }
                 response = model.chat(requestBuilder.build());
@@ -124,7 +129,7 @@ public class AgentExecutor {
 
             for (ToolExecutionRequest toolRequest : aiMessage.toolExecutionRequests()) {
                 String toolName = toolRequest.name();
-                ToolExecutor executor = instance.getToolExecutors().get(toolName);
+                ToolExecutor executor = allToolExecutors.get(toolName);
 
                 if (executor == null) {
                     log.warn("[{}] 未找到工具执行器: {}", agentName, toolName);

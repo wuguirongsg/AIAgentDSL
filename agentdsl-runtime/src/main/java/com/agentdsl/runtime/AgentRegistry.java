@@ -9,6 +9,8 @@ import com.agentdsl.langchain4j.LangChainModelFactory;
 import com.agentdsl.langchain4j.LangChainRagFactory;
 import com.agentdsl.langchain4j.LangChainToolBridge;
 import com.agentdsl.langchain4j.LangChainToolBridge.ToolEntry;
+import com.agentdsl.mcp.McpToolProviderBridge;
+import com.agentdsl.mcp.McpToolProviderBridge.McpToolsResult;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
@@ -36,6 +38,8 @@ public class AgentRegistry {
     private final LangChainMemoryFactory memoryFactory;
     private final LangChainToolBridge toolBridge;
     private final LangChainRagFactory ragFactory;
+    private final McpToolProviderBridge mcpBridge;
+    private final List<McpToolsResult> mcpConnections = new ArrayList<>();
 
     public AgentRegistry() {
         this(new LangChainModelFactory(), new LangChainMemoryFactory(),
@@ -50,6 +54,7 @@ public class AgentRegistry {
         this.memoryFactory = memoryFactory;
         this.toolBridge = toolBridge;
         this.ragFactory = ragFactory;
+        this.mcpBridge = new McpToolProviderBridge();
     }
 
     /**
@@ -116,7 +121,23 @@ public class AgentRegistry {
             log.info("Agent '{}' 已配置 RAG", agentSpec.getName());
         }
 
-        // 5. 组装实例
+        // 5. 处理 MCP 工具
+        if (agentSpec.getMcp() != null && !agentSpec.getMcp().getServers().isEmpty()) {
+            try {
+                McpToolsResult result = mcpBridge.connect(agentSpec.getMcp());
+                mcpConnections.add(result);
+                toolSpecifications.addAll(result.toolSpecifications());
+                toolExecutors.putAll(result.toolExecutors());
+                log.info("Agent '{}' 加载了 {} 个 MCP 工具",
+                        agentSpec.getName(), result.toolSpecifications().size());
+            } catch (Exception e) {
+                log.error("Agent '{}' MCP 连接失败: {}", agentSpec.getName(), e.getMessage(), e);
+                throw new DslRuntimeException("ADSL-050",
+                        "MCP 连接失败: " + e.getMessage(), e);
+            }
+        }
+
+        // 6. 组装实例
         AgentInstance instance = new AgentInstance(
                 agentSpec, model, memory, toolSpecifications, toolExecutors, contentRetriever);
 
@@ -214,5 +235,20 @@ public class AgentRegistry {
         globalTools.clear();
         workflows.clear();
         log.info("注册中心已清空");
+    }
+
+    /**
+     * 关闭所有 MCP 连接。
+     */
+    public void closeMcpConnections() {
+        for (McpToolsResult conn : mcpConnections) {
+            try {
+                conn.close();
+            } catch (Exception e) {
+                log.warn("关闭 MCP 连接异常: {}", e.getMessage());
+            }
+        }
+        mcpConnections.clear();
+        log.info("所有 MCP 连接已关闭");
     }
 }

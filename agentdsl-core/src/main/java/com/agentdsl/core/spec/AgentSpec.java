@@ -19,6 +19,7 @@ public class AgentSpec {
     private RagSpec rag;
     private GuardrailSpec guardrails;
     private OutputSchemaSpec outputSchema;
+    private McpSpec mcp;
 
     public AgentSpec() {
     }
@@ -109,6 +110,14 @@ public class AgentSpec {
         this.outputSchema = outputSchema;
     }
 
+    public McpSpec getMcp() {
+        return mcp;
+    }
+
+    public void setMcp(McpSpec mcp) {
+        this.mcp = mcp;
+    }
+
     @Override
     public String toString() {
         return "AgentSpec{" +
@@ -121,6 +130,7 @@ public class AgentSpec {
                 + '\'' +
                 ", memory=" + memory +
                 ", tools=" + tools.size() + " inline + " + toolRefs.size() + " refs" +
+                ", mcp=" + mcp +
                 '}';
     }
 }

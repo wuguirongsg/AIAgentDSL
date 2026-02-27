@@ -5,6 +5,7 @@ import com.agentdsl.compiler.DslCompiler;
 import com.agentdsl.core.spec.AgentSpec;
 import com.agentdsl.core.spec.ToolSpec;
 import com.agentdsl.core.spec.WorkflowSpec;
+import com.agentdsl.tools.BuiltinToolRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,6 +45,7 @@ public class AgentDslEngine implements AutoCloseable {
         this.registry = new AgentRegistry();
         this.executor = new AgentExecutor(registry);
         this.workflowExecutor = new WorkflowExecutor(executor, registry);
+        registerBuiltinTools();
     }
 
     /**
@@ -145,7 +147,20 @@ public class AgentDslEngine implements AutoCloseable {
 
     @Override
     public void close() {
+        registry.closeMcpConnections();
         stopWatching();
+    }
+
+    /**
+     * 注册内置工具（HTTP / JSON / File 等）。
+     * 在引擎初始化时自动调用，DSL 脚本可通过 include 引用这些工具。
+     */
+    private void registerBuiltinTools() {
+        List<ToolSpec> builtinTools = BuiltinToolRegistry.getBuiltinTools();
+        if (!builtinTools.isEmpty()) {
+            registry.registerTools(builtinTools);
+            log.info("注册了 {} 个内置工具", builtinTools.size());
+        }
     }
 
     /**

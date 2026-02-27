@@ -29,4 +29,25 @@ class ParameterDelegate {
     void required(boolean required) {
         spec.required = required
     }
+
+    void pattern(String regex) {
+        spec.pattern = regex
+    }
+
+    void defaultValue(Object value) {
+        spec.defaultValue = value
+    }
+
+    void enumValues(String... values) {
+        spec.enumValues = values.join(',')
+    }
+
+    void min(double value) {
+        spec.min = value
+    }
+
+    void max(double value) {
+        spec.max = value
+    }
+
 }

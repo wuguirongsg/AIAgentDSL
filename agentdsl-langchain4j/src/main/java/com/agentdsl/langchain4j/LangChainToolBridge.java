@@ -11,6 +11,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * LangChain4j 工具桥接器。
@@ -32,10 +35,16 @@ public class LangChainToolBridge {
     public ToolEntry convert(ToolSpec toolSpec) {
         log.info("转换工具: {}", toolSpec.getName());
 
+        String desc = toolSpec.getDescription();
+        if (toolSpec.getReturnDescription() != null && !toolSpec.getReturnDescription().isBlank()) {
+            desc = desc != null ? desc + "\nReturns: " + toolSpec.getReturnDescription()
+                    : "Returns: " + toolSpec.getReturnDescription();
+        }
+
         // 1. 构建 ToolSpecification
         var specBuilder = ToolSpecification.builder()
                 .name(toolSpec.getName())
-                .description(toolSpec.getDescription());
+                .description(desc);
 
         // 添加参数定义 — 使用 LangChain4j 1.x 的 JsonObjectSchema API
         List<ParameterSpec> params = toolSpec.getParameters();
@@ -65,30 +74,47 @@ public class LangChainToolBridge {
         // 2. 构建 ToolExecutor
         ToolExecutor executor = (request, memoryId) -> {
             log.debug("执行工具 '{}', 参数: {}", toolSpec.getName(), request.arguments());
-            try {
-                if (toolSpec.isBeanMethod()) {
-                    // @AgentTool 注解的 Java 方法
-                    return invokeBeanMethod(toolSpec, request);
-                }
 
-                Object body = toolSpec.getExecuteBody();
-                if (body instanceof Closure<?> closure) {
-                    // Groovy Closure
-                    Map<String, Object> parsedParams = parseArguments(request);
+            Map<String, Object> parsedParams = parseArguments(request);
+            String validationError = validateParameters(toolSpec, parsedParams);
+            if (validationError != null) {
+                return "Error: " + validationError;
+            }
 
-                    Object result;
-                    if (closure.getMaximumNumberOfParameters() == 0) {
-                        result = closure.call();
-                    } else {
-                        result = closure.call(parsedParams);
+            int timeout = toolSpec.getTimeoutSeconds() > 0 ? toolSpec.getTimeoutSeconds() : 30;
+
+            CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
+                try {
+                    if (toolSpec.isBeanMethod()) {
+                        return invokeBeanMethod(toolSpec, parsedParams);
                     }
-                    return result != null ? result.toString() : "null";
-                } else {
-                    return "Error: Tool execute body is not a Closure";
+
+                    Object body = toolSpec.getExecuteBody();
+                    if (body instanceof Closure<?> closure) {
+                        Object result;
+                        if (closure.getMaximumNumberOfParameters() == 0) {
+                            result = closure.call();
+                        } else {
+                            result = closure.call(parsedParams);
+                        }
+                        return result != null ? result.toString() : "null";
+                    } else {
+                        return "Error: Tool execute body is not a Closure";
+                    }
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
                 }
+            });
+
+            try {
+                return future.get(timeout, TimeUnit.SECONDS);
+            } catch (TimeoutException e) {
+                future.cancel(true);
+                return handleTimeoutOrError(toolSpec, "Timeout exception: Execution exceeded " + timeout + " seconds");
             } catch (Exception e) {
-                log.error("工具 '{}' 执行失败", toolSpec.getName(), e);
-                return "Error executing tool: " + e.getMessage();
+                log.error("工具 '{}' 执行失败", toolSpec.getName(), e.getCause() != null ? e.getCause() : e);
+                return handleTimeoutOrError(toolSpec,
+                        "Error executing tool: " + (e.getCause() != null ? e.getCause().getMessage() : e.getMessage()));
             }
         };
 
@@ -130,6 +156,65 @@ public class LangChainToolBridge {
         }
     }
 
+    private String validateParameters(ToolSpec toolSpec, Map<String, Object> params) {
+        if (toolSpec.getParameters() == null)
+            return null;
+        for (ParameterSpec paramSpec : toolSpec.getParameters()) {
+            Object value = params.get(paramSpec.getName());
+
+            if (value == null && paramSpec.getDefaultValue() != null) {
+                params.put(paramSpec.getName(), paramSpec.getDefaultValue());
+                value = paramSpec.getDefaultValue();
+            }
+            if (value == null && paramSpec.isRequired()) {
+                return "Missing required parameter: " + paramSpec.getName();
+            }
+            if (value == null)
+                continue;
+
+            if (paramSpec.getPattern() != null && value instanceof String strVal) {
+                if (!strVal.matches(paramSpec.getPattern())) {
+                    return "Parameter '" + paramSpec.getName() + "' does not match pattern: " + paramSpec.getPattern();
+                }
+            }
+
+            if (value instanceof Number numVal) {
+                double doubleVal = numVal.doubleValue();
+                if (paramSpec.getMin() != null && doubleVal < paramSpec.getMin()) {
+                    return "Parameter '" + paramSpec.getName() + "' must be >= " + paramSpec.getMin();
+                }
+                if (paramSpec.getMax() != null && doubleVal > paramSpec.getMax()) {
+                    return "Parameter '" + paramSpec.getName() + "' must be <= " + paramSpec.getMax();
+                }
+            }
+
+            if (paramSpec.getEnumValues() != null && !paramSpec.getEnumValues().isBlank()) {
+                List<String> enums = Arrays.asList(paramSpec.getEnumValues().split(","));
+                if (!enums.contains(value.toString())) {
+                    return "Parameter '" + paramSpec.getName() + "' must be one of: " + paramSpec.getEnumValues();
+                }
+            }
+        }
+        return null;
+    }
+
+    private String handleTimeoutOrError(ToolSpec toolSpec, String errorMessage) {
+        if (toolSpec.getOnErrorHandler() instanceof Closure<?> handler) {
+            try {
+                Object res;
+                if (handler.getMaximumNumberOfParameters() == 1) {
+                    res = handler.call(errorMessage);
+                } else {
+                    res = handler.call();
+                }
+                return res != null ? res.toString() : errorMessage;
+            } catch (Exception ex) {
+                log.warn("onError handler failed for tool {}", toolSpec.getName(), ex);
+            }
+        }
+        return "Error: " + errorMessage;
+    }
+
     /**
      * 将 DSL 参数类型映射为 LangChain4j 1.x 的 JsonSchemaElement。
      */
@@ -147,9 +232,8 @@ public class LangChainToolBridge {
     /**
      * 通过反射调用 @AgentTool 注解的 Java 方法。
      */
-    private String invokeBeanMethod(ToolSpec toolSpec, ToolExecutionRequest request) {
+    private String invokeBeanMethod(ToolSpec toolSpec, Map<String, Object> parsedParams) {
         try {
-            Map<String, Object> parsedParams = parseArguments(request);
             java.lang.reflect.Method method = toolSpec.getToolBeanMethod();
             Object bean = toolSpec.getToolBean();
             java.lang.reflect.Parameter[] methodParams = method.getParameters();

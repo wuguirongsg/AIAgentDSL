@@ -16,6 +16,13 @@ public class ToolSpec {
     private List<ParameterSpec> parameters = new ArrayList<>();
     private Object executeBody; // Groovy Closure 在运行时绑定
 
+    // v1.1+ 增强字段
+    private String returnType; // 返回值类型 ("string", "json", "object")
+    private String returnDescription; // 返回值格式描述（帮助 LLM 理解输出）
+    private int timeoutSeconds = 30; // 执行超时（秒），默认 30s
+    private Object onErrorHandler; // Groovy Closure，错误处理回调
+    private PermissionSpec permissions; // 权限声明
+
     // @AgentTool 注解扫描的方法引用
     private Object toolBean;
     private Method toolBeanMethod;
@@ -61,6 +68,46 @@ public class ToolSpec {
         this.executeBody = executeBody;
     }
 
+    public String getReturnType() {
+        return returnType;
+    }
+
+    public void setReturnType(String returnType) {
+        this.returnType = returnType;
+    }
+
+    public String getReturnDescription() {
+        return returnDescription;
+    }
+
+    public void setReturnDescription(String returnDescription) {
+        this.returnDescription = returnDescription;
+    }
+
+    public int getTimeoutSeconds() {
+        return timeoutSeconds;
+    }
+
+    public void setTimeoutSeconds(int timeoutSeconds) {
+        this.timeoutSeconds = timeoutSeconds;
+    }
+
+    public Object getOnErrorHandler() {
+        return onErrorHandler;
+    }
+
+    public void setOnErrorHandler(Object onErrorHandler) {
+        this.onErrorHandler = onErrorHandler;
+    }
+
+    public PermissionSpec getPermissions() {
+        return permissions;
+    }
+
+    public void setPermissions(PermissionSpec permissions) {
+        this.permissions = permissions;
+    }
+
     public Object getToolBean() {
         return toolBean;
     }
@@ -90,6 +137,8 @@ public class ToolSpec {
                 "name='" + name + '\'' +
                 ", description='" + description + '\'' +
                 ", parameters=" + parameters.size() +
+                ", timeout=" + timeoutSeconds + "s" +
+                (returnType != null ? ", returns=" + returnType : "") +
                 '}';
     }
 }
