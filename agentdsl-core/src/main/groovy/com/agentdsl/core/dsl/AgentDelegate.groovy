@@ -91,4 +91,16 @@ class AgentDelegate {
         spec.mcp = delegate.spec
     }
 
+    /**
+     * skills { include "skill-name" }
+     * 引用已通过顶层 skill("name") { ... } 定义的全局技能。
+     * 运行时将从 globalSkills 仓库中查找并展平为 LangChain4j ToolSpecification。
+     */
+    void skills(@DelegatesTo(SkillsBlockDelegate) Closure config) {
+        def delegate = new SkillsBlockDelegate(spec)
+        config.delegate = delegate
+        config.resolveStrategy = Closure.DELEGATE_FIRST
+        config.call()
+    }
+
 }

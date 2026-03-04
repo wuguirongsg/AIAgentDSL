@@ -16,6 +16,8 @@ public class AgentSpec {
     private MemorySpec memory;
     private List<ToolSpec> tools = new ArrayList<>();
     private List<String> toolRefs = new ArrayList<>();
+    private List<String> skillRefs = new ArrayList<>();
+    private List<SkillSpec> inlineSkills = new ArrayList<>();
     private RagSpec rag;
     private GuardrailSpec guardrails;
     private OutputSchemaSpec outputSchema;
@@ -118,6 +120,22 @@ public class AgentSpec {
         this.mcp = mcp;
     }
 
+    public List<String> getSkillRefs() {
+        return skillRefs;
+    }
+
+    public void setSkillRefs(List<String> skillRefs) {
+        this.skillRefs = skillRefs;
+    }
+
+    public List<SkillSpec> getInlineSkills() {
+        return inlineSkills;
+    }
+
+    public void setInlineSkills(List<SkillSpec> inlineSkills) {
+        this.inlineSkills = inlineSkills;
+    }
+
     @Override
     public String toString() {
         return "AgentSpec{" +
@@ -130,6 +148,7 @@ public class AgentSpec {
                 + '\'' +
                 ", memory=" + memory +
                 ", tools=" + tools.size() + " inline + " + toolRefs.size() + " refs" +
+                ", skills=" + skillRefs.size() + " refs + " + inlineSkills.size() + " inline" +
                 ", mcp=" + mcp +
                 '}';
     }

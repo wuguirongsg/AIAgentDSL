@@ -3,6 +3,7 @@ package com.agentdsl.compiler;
 import com.agentdsl.core.exception.DslCompilationException;
 import com.agentdsl.core.spec.AgentSpec;
 import com.agentdsl.core.spec.ParameterSpec;
+import com.agentdsl.core.spec.SkillSpec;
 import com.agentdsl.core.spec.StepSpec;
 import com.agentdsl.core.spec.ToolSpec;
 import com.agentdsl.core.spec.WorkflowSpec;
@@ -30,7 +31,7 @@ public class DslValidator {
      * 校验所有编译产出物，包括引用存在性校验。
      */
     public static void validateAll(List<AgentSpec> agents, List<ToolSpec> tools,
-            List<WorkflowSpec> workflows) {
+            List<WorkflowSpec> workflows, List<SkillSpec> skills) {
         for (AgentSpec agent : agents) {
             validateAgent(agent);
         }
@@ -40,16 +41,27 @@ public class DslValidator {
         for (WorkflowSpec workflow : workflows) {
             validateWorkflow(workflow);
         }
-        // 引用存在性校验（编译期发现未定义的引用）
-        // 注意：只有当脚本中同时包含工具/Agent 定义时才进行交叉验证。
-        // 若脚本中没有独立 Tool 定义（仅有 Agent 内联工具），跳过 toolRef 校验。
-        // 若脚本中没有 Agent 定义（如独立 workflow 脚本），跳过 agentRef 校验。
+        for (SkillSpec skill : skills) {
+            validateSkill(skill);
+        }
+        // 引用存在性校验
         if (!tools.isEmpty()) {
             validateToolReferences(agents, tools);
         }
         if (!agents.isEmpty() && !workflows.isEmpty()) {
             validateWorkflowAgentReferences(workflows, agents);
         }
+        if (!skills.isEmpty()) {
+            validateSkillReferences(agents, skills);
+        }
+    }
+
+    /**
+     * 向后兼容重载方法（无 Skills 参数版本）。
+     */
+    public static void validateAll(List<AgentSpec> agents, List<ToolSpec> tools,
+            List<WorkflowSpec> workflows) {
+        validateAll(agents, tools, workflows, List.of());
     }
 
     /**
@@ -173,6 +185,66 @@ public class DslValidator {
         if (workflow.getSteps() == null || workflow.getSteps().isEmpty()) {
             throw new DslCompilationException("ADSL-001",
                     "Workflow '" + workflow.getName() + "' 缺少必填项: steps（至少需要 1 个步骤）");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Skill 校验
+    // -----------------------------------------------------------------------
+
+    /**
+     * 校验单个 Skill 定义。
+     * 必填项：name, description, type。
+     * Prompt 型：必须有 instruction。
+     * Logic 型：必须有 execute。
+     */
+    public static void validateSkill(SkillSpec skill) {
+        if (skill.getName() == null || skill.getName().isBlank()) {
+            throw new DslCompilationException("ADSL-001",
+                    "Skill 缺少必填项: name");
+        }
+        if (skill.getDescription() == null || skill.getDescription().isBlank()) {
+            throw new DslCompilationException("ADSL-001",
+                    "Skill '" + skill.getName() + "' 缺少必填项: description");
+        }
+        if (skill.getType() == null) {
+            throw new DslCompilationException("ADSL-001",
+                    "Skill '" + skill.getName() + "' 缺少必填项: type（prompt 或 logic）");
+        }
+        switch (skill.getType()) {
+            case PROMPT -> {
+                if (skill.getInstruction() == null || skill.getInstruction().isBlank()) {
+                    throw new DslCompilationException("ADSL-001",
+                            "Prompt Skill '" + skill.getName() + "' 缺少必填项: instruction");
+                }
+            }
+            case LOGIC -> {
+                if (skill.getExecuteBody() == null) {
+                    throw new DslCompilationException("ADSL-001",
+                            "Logic Skill '" + skill.getName() + "' 缺少必填项: execute { }");
+                }
+            }
+        }
+    }
+
+    /**
+     * 校验 Agent 通过 skills { include } 引用的技能是否在已定义的 Skill 列表中存在。
+     */
+    public static void validateSkillReferences(List<AgentSpec> agents, List<SkillSpec> skills) {
+        Set<String> definedSkillNames = skills.stream()
+                .map(SkillSpec::getName)
+                .collect(Collectors.toSet());
+
+        for (AgentSpec agent : agents) {
+            if (agent.getSkillRefs() == null)
+                continue;
+            for (String ref : agent.getSkillRefs()) {
+                if (!definedSkillNames.contains(ref)) {
+                    throw new DslCompilationException("ADSL-003",
+                            "Agent '" + agent.getName() + "' 引用了未定义的技能: '" + ref
+                                    + "'，已定义的技能: " + definedSkillNames);
+                }
+            }
         }
     }
 

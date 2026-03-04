@@ -3,6 +3,7 @@ package com.agentdsl.runtime;
 import com.agentdsl.compiler.DslCompileResult;
 import com.agentdsl.compiler.DslCompiler;
 import com.agentdsl.core.spec.AgentSpec;
+import com.agentdsl.core.spec.SkillSpec;
 import com.agentdsl.core.spec.ToolSpec;
 import com.agentdsl.core.spec.WorkflowSpec;
 import com.agentdsl.tools.BuiltinToolRegistry;
@@ -154,18 +155,28 @@ public class AgentDslEngine implements AutoCloseable {
     /**
      * 注册内置工具（HTTP / JSON / File 等）。
      * 在引擎初始化时自动调用，DSL 脚本可通过 include 引用这些工具。
+     * <p>
+     * FileTool 白名单：/tmp + 当前工作目录（含 output/ 子目录），
+     * 让 Agent 可以将生成的文件保存到项目本地目录。
      */
     private void registerBuiltinTools() {
-        List<ToolSpec> builtinTools = BuiltinToolRegistry.getBuiltinTools();
+        String cwd = System.getProperty("user.dir");
+        List<String> allowedDirs = List.of(
+                "/tmp",
+                cwd,
+                cwd + "/output",
+                cwd + "/examples");
+        List<ToolSpec> builtinTools = BuiltinToolRegistry.getBuiltinTools(allowedDirs);
         if (!builtinTools.isEmpty()) {
             registry.registerTools(builtinTools);
-            log.info("注册了 {} 个内置工具", builtinTools.size());
+            log.info("注册了 {} 个内置工具（文件白名单: /tmp, {}/output）", builtinTools.size(), cwd);
         }
     }
 
     /**
      * 注册编译结果中的所有工具和 Agent。
      * 工具先于 Agent 注册，以支持 Agent 通过 include 引用工具。
+     * Skill 先于 Agent 注册，以支持 Agent 通过 skills { include } 引用技能。
      */
     private void registerAll(DslCompileResult result) {
         // 先注册独立工具
@@ -173,6 +184,13 @@ public class AgentDslEngine implements AutoCloseable {
         if (!tools.isEmpty()) {
             registry.registerTools(tools);
             log.info("注册了 {} 个全局工具", tools.size());
+        }
+
+        // 注册 Skills（在 Agent 之前）
+        List<SkillSpec> skills = result.getSkills();
+        if (!skills.isEmpty()) {
+            registry.registerSkills(skills);
+            log.info("注册了 {} 个全局技能", skills.size());
         }
 
         // 再注册 Agent

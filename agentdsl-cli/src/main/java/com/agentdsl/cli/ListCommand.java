@@ -3,6 +3,7 @@ package com.agentdsl.cli;
 import com.agentdsl.compiler.DslCompileResult;
 import com.agentdsl.compiler.DslCompiler;
 import com.agentdsl.core.spec.AgentSpec;
+import com.agentdsl.core.spec.SkillSpec;
 import com.agentdsl.core.spec.ToolSpec;
 import com.agentdsl.core.spec.WorkflowSpec;
 import picocli.CommandLine.Command;
@@ -13,16 +14,16 @@ import java.nio.file.Path;
 import java.util.concurrent.Callable;
 
 /**
- * {@code agentdsl list} — 列出脚本中定义的所有 Agent、独立 Tool、Workflow。
+ * {@code agentdsl list} — 列出脚本中定义的所有 Agent、独立 Tool、Workflow、Skill。
  *
  * <h3>示例</h3>
  * 
  * <pre>
  *   agentdsl list examples/workflow-pipeline.agent.groovy
- *   agentdsl list examples/mcp-github.agent.groovy --format json
+ *   agentdsl list examples/skill-demo.agent.groovy --format json
  * </pre>
  */
-@Command(name = "list", description = "列出 DSL 脚本中定义的所有 Agent、工具和工作流", mixinStandardHelpOptions = true)
+@Command(name = "list", description = "列出 DSL 脚本中定义的所有 Agent、工具、工作流和技能", mixinStandardHelpOptions = true)
 public class ListCommand implements Callable<Integer> {
 
     @Parameters(index = "0", description = "DSL 脚本文件路径 (.agent.groovy)")
@@ -95,6 +96,21 @@ public class ListCommand implements Callable<Integer> {
                 System.out.printf("  %-25s [steps: %d]%n", workflow.getName(), stepCount);
             }
         }
+
+        System.out.println();
+
+        // Skills
+        System.out.printf("💡 技能 (Skills) (%d):%n", result.getSkills().size());
+        if (result.getSkills().isEmpty()) {
+            System.out.println("  (无)");
+        } else {
+            for (SkillSpec skill : result.getSkills()) {
+                System.out.printf("  %-25s [type: %-6s] — %s%n",
+                        skill.getName(),
+                        skill.getType() != null ? skill.getType().name().toLowerCase() : "?",
+                        skill.getDescription() != null ? skill.getDescription() : "无描述");
+            }
+        }
     }
 
     private void printJson(DslCompileResult result) {
@@ -130,6 +146,16 @@ public class ListCommand implements Callable<Integer> {
             sb.append("\n    {\"name\": \"").append(w.getName())
                     .append("\", \"steps\": ").append(steps).append("}");
             if (i < result.getWorkflows().size() - 1)
+                sb.append(",");
+        }
+        sb.append("\n  ],\n");
+        sb.append("  \"skills\": [");
+        for (int i = 0; i < result.getSkills().size(); i++) {
+            SkillSpec s = result.getSkills().get(i);
+            sb.append("\n    {\"name\": \"").append(s.getName())
+                    .append("\", \"type\": \"").append(s.getType() != null ? s.getType().name().toLowerCase() : "")
+                    .append("\"}");
+            if (i < result.getSkills().size() - 1)
                 sb.append(",");
         }
         sb.append("\n  ]\n}");

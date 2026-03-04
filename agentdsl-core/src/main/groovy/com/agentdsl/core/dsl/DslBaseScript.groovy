@@ -6,7 +6,7 @@ import groovy.transform.CompileStatic
 /**
  * DSL 脚本基类。
  * 所有 .agent.groovy 脚本在编译时会自动继承此类。
- * 提供顶层关键字：agent(), tool(), workflow()
+ * 提供顶层关键字：agent(), tool(), workflow(), skill()
  */
 abstract class DslBaseScript extends Script {
 
@@ -18,6 +18,9 @@ abstract class DslBaseScript extends Script {
 
     /** 编译后收集到的所有 WorkflowSpec */
     List<WorkflowSpec> workflows = []
+
+    /** 编译后收集到的所有独立 SkillSpec */
+    List<SkillSpec> standaloneSkills = []
 
     /**
      * 顶层关键字：agent("name") { ... }
@@ -53,6 +56,19 @@ abstract class DslBaseScript extends Script {
         config.resolveStrategy = Closure.DELEGATE_FIRST
         config.call()
         workflows << spec
+    }
+
+    /**
+     * 顶层关键字：skill("name") { ... }
+     * 定义一个全局技能，可被多个 Agent 通过 skills { include "name" } 引用。
+     */
+    void skill(String name, @DelegatesTo(SkillDelegate) Closure config) {
+        def spec = new SkillSpec(name)
+        def delegate = new SkillDelegate(spec)
+        config.delegate = delegate
+        config.resolveStrategy = Closure.DELEGATE_FIRST
+        config.call()
+        standaloneSkills << spec
     }
 
     /**

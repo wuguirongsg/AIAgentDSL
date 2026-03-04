@@ -22,17 +22,17 @@ graph LR
     S1 --> S2 --> S3 --> S35 --> S4 --> S5 --> S6 --> S7 --> S8
 ```
 
-| Sprint      | 主题                                    | 对应阶段  | 时间       |
-| ----------- | --------------------------------------- | --------- | ---------- |
-| Sprint 1    | ToolSpec/ParameterSpec 模型增强         | Phase 4.5 | Week 1     |
-| Sprint 2    | DSL Delegate + LangChainToolBridge 适配 | Phase 4.5 | Week 2     |
-| Sprint 3    | 内置工具集 + 端到端集成测试             | Phase 4.5 | Week 3     |
-| Sprint 3.5  | **MCP 协议对接**                        | Phase 4.8 | Week 3.5-4 |
-| Sprint 4    | 可观测性 + 结构化日志                   | Phase 5   | Week 5     |
-| Sprint 5    | CLI 工具 + DslValidator 增强            | Phase 5   | Week 6     |
-| Sprint 6    | RAG 系统增强                            | Phase 6   | Week 7-8   |
-| Sprint 7    | Spring Boot Starter                     | Phase 7   | Week 9     |
-| Sprint 8-10 | v2.0 事件驱动多 Agent                   | Phase 8   | Week 10-12 |
+| Sprint      | 主题                                    | 对应阶段  | 时间       | 是否完成 ｜ |
+| ----------- | --------------------------------------- | --------- | ---------- | ----------- |
+| Sprint 1    | ToolSpec/ParameterSpec 模型增强         | Phase 4.5 | Week 1     | 是 ｜       |
+| Sprint 2    | DSL Delegate + LangChainToolBridge 适配 | Phase 4.5 | Week 2     | 是 ｜       |
+| Sprint 3    | 内置工具集 + 端到端集成测试             | Phase 4.5 | Week 3     | 是 ｜       |
+| Sprint 3.5  | **MCP 协议对接**                        | Phase 4.8 | Week 3.5-4 | 是 ｜       |
+| Sprint 4    | 可观测性 + 结构化日志                   | Phase 5   | Week 5     | 是 ｜       |
+| Sprint 5    | CLI 工具 + DslValidator 增强            | Phase 5   | Week 6     | 是 ｜       |
+| Sprint 6    | RAG 系统增强                            | Phase 6   | Week 7-8   | 否 ｜       |
+| Sprint 7    | Spring Boot Starter                     | Phase 7   | Week 9     | 否 ｜       |
+| Sprint 8-10 | v2.0 事件驱动多 Agent                   | Phase 8   | Week 10-12 | 否 ｜       |
 
 ---
 

@@ -119,6 +119,15 @@ public class AgentExecutor {
             if (!aiMessage.hasToolExecutionRequests()) {
                 // 没有工具调用，直接返回文本回复
                 String text = aiMessage.text();
+                // 某些模型（如 Gemini）在工具调用完成后可能返回 null text
+                // 此时说明任务已完成，返回最后一条工具执行结果的摘要
+                if (text == null || text.isBlank()) {
+                    // 从 messages 里找最后一条 ToolExecutionResultMessage 的内容作为回复
+                    String lastToolResult = findLastToolResult(messages);
+                    text = lastToolResult != null
+                            ? lastToolResult
+                            : "✅ 任务已完成（模型无额外回复）";
+                }
                 log.info("[{}] 回复: {}", agentName, truncate(text, 100));
                 return text;
             }
@@ -144,7 +153,7 @@ public class AgentExecutor {
                 }
 
                 String result = executor.execute(toolRequest, agentName);
-                log.debug("[{}] 工具 '{}' 返回: {}", agentName, toolName, truncate(result, 200));
+                log.info("[{}] 工具 '{}' 执行完成: {}", agentName, toolName, truncate(result, 200));
 
                 ToolExecutionResultMessage resultMsg = ToolExecutionResultMessage.from(
                         toolRequest, result);
@@ -153,10 +162,28 @@ public class AgentExecutor {
                     instance.getMemory().add(resultMsg);
                 }
             }
+
+            // 5. 所有工具执行完后，所有工具结果都已加入 messages
+            // 继续循环：再次调用模型，让模型基于工具结果生成最终回复
+            // （模型可能再次调用工具，或产生最终文本回复）
+
         }
 
         throw new DslRuntimeException("ADSL-020",
                 "Agent '" + instance.getName() + "' 工具调用循环超过最大次数: " + MAX_TOOL_ITERATIONS);
+    }
+
+    /**
+     * 从消息历史中找最后一条 ToolExecutionResultMessage 的内容。
+     * 用于 Gemini 等模型在工具调用完成后不返回文本时的降级回复。
+     */
+    private static String findLastToolResult(List<ChatMessage> messages) {
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            if (messages.get(i) instanceof ToolExecutionResultMessage t) {
+                return t.text();
+            }
+        }
+        return null;
     }
 
     /**
