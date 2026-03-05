@@ -91,11 +91,11 @@ public class DslCompiler {
                 List<SkillSpec> skills = dslScript.getStandaloneSkills();
 
                 // 校验
-                DslValidator.validateAll(agents, tools, workflows, skills);
+                List<Diagnostic> diagnostics = DslValidator.validateAll(agents, tools, workflows, skills);
 
-                log.info("DSL 编译成功: {} agents, {} tools, {} workflows, {} skills",
-                        agents.size(), tools.size(), workflows.size(), skills.size());
-                return new DslCompileResult(agents, tools, workflows, skills);
+                log.info("DSL 编译成功: {} agents, {} tools, {} workflows, {} skills, {} diagnostics",
+                        agents.size(), tools.size(), workflows.size(), skills.size(), diagnostics.size());
+                return new DslCompileResult(agents, tools, workflows, skills, diagnostics);
             } else {
                 throw new DslCompilationException("ADSL-002",
                         "脚本未继承 DslBaseScript，请检查编译器配置");

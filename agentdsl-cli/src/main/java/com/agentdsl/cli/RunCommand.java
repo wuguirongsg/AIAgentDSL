@@ -1,5 +1,7 @@
 package com.agentdsl.cli;
 
+import com.agentdsl.compiler.Diagnostic;
+import com.agentdsl.compiler.DslCompileResult;
 import com.agentdsl.runtime.AgentDslEngine;
 import com.agentdsl.runtime.WorkflowResult;
 import com.agentdsl.runtime.metrics.ExecutionTrace;
@@ -64,7 +66,16 @@ public class RunCommand implements Callable<Integer> {
         }
 
         try (AgentDslEngine engine = new AgentDslEngine(sandbox)) {
-            engine.loadFile(scriptPath);
+            DslCompileResult compileResult = engine.loadFile(scriptPath);
+
+            // 打印编译诊断警告
+            if (compileResult.getDiagnostics() != null && !compileResult.getDiagnostics().isEmpty()) {
+                System.out.println("⚠️  DSL Compilation Warnings:");
+                for (Diagnostic diag : compileResult.getDiagnostics()) {
+                    System.out.printf("  - [%s] %s%n", diag.getTarget(), diag.getMessage());
+                }
+                System.out.println();
+            }
 
             // 执行工作流
             if (workflowName != null) {

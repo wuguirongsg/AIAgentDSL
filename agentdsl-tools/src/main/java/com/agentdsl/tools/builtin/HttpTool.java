@@ -40,8 +40,8 @@ public class HttpTool {
 
     @AgentTool(name = "http_get", description = "发送 HTTP GET 请求并返回响应体")
     public String httpGet(
-            @ToolParam(description = "请求 URL") String url,
-            @ToolParam(description = "请求头，JSON 格式，如 {\"Authorization\":\"Bearer xxx\"}", required = false) String headers) {
+            @ToolParam(name = "url", description = "请求 URL") String url,
+            @ToolParam(name = "headers", description = "请求头，JSON 格式，如 {\"Authorization\":\"Bearer xxx\"}", required = false) String headers) {
         try {
             Request.Builder requestBuilder = new Request.Builder().url(url).get();
             applyHeaders(requestBuilder, headers);
@@ -59,9 +59,9 @@ public class HttpTool {
 
     @AgentTool(name = "http_post", description = "发送 HTTP POST 请求并返回响应体")
     public String httpPost(
-            @ToolParam(description = "请求 URL") String url,
-            @ToolParam(description = "请求体内容") String body,
-            @ToolParam(description = "Content-Type，默认 application/json", required = false) String contentType) {
+            @ToolParam(name = "url", description = "请求 URL") String url,
+            @ToolParam(name = "body", description = "请求体内容") String body,
+            @ToolParam(name = "contentType", description = "Content-Type，默认 application/json", required = false) String contentType) {
         try {
             MediaType mediaType = (contentType != null && !contentType.isBlank())
                     ? MediaType.parse(contentType)

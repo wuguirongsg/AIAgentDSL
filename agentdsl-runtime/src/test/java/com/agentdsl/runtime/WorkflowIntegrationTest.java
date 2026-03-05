@@ -19,7 +19,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * 运行命令：
  * ./gradlew :agentdsl-runtime:test --tests "*.WorkflowIntegrationTest"
  */
-// @Disabled("需要真实 LLM API Key，手动去掉此注解后运行")
+// 获取真实API_KEY方可运行
+@Disabled("需要真实 LLM API Key，手动去掉此注解后运行")
 class WorkflowIntegrationTest {
 
     private static final Path EXAMPLE_SCRIPT = Paths.get("../examples/workflow-pipeline.agent.groovy");

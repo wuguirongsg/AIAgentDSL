@@ -16,7 +16,7 @@ public class JsonTool {
     private static final Gson gson = new GsonBuilder().setPrettyPrinting().create();
 
     @AgentTool(name = "json_parse", description = "解析 JSON 字符串并返回格式化后的结果")
-    public String jsonParse(@ToolParam(description = "JSON 字符串") String json) {
+    public String jsonParse(@ToolParam(name = "json", description = "JSON 字符串") String json) {
         try {
             JsonElement element = JsonParser.parseString(json);
             return gson.toJson(element);
@@ -28,8 +28,8 @@ public class JsonTool {
 
     @AgentTool(name = "json_query", description = "使用 dot-notation 路径查询 JSON 中的值，例如 'user.name' 或 'items.0.title'")
     public String jsonQuery(
-            @ToolParam(description = "JSON 字符串") String json,
-            @ToolParam(description = "查询路径，使用点号分隔，如 'user.name' 或 'items.0.title'") String path) {
+            @ToolParam(name = "json", description = "JSON 字符串") String json,
+            @ToolParam(name = "path", description = "查询路径，使用点号分隔，如 'user.name' 或 'items.0.title'") String path) {
         try {
             JsonElement current = JsonParser.parseString(json);
 

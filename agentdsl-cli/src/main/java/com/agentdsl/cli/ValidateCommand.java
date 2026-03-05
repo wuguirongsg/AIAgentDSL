@@ -1,5 +1,6 @@
 package com.agentdsl.cli;
 
+import com.agentdsl.compiler.Diagnostic;
 import com.agentdsl.compiler.DslCompileResult;
 import com.agentdsl.compiler.DslCompiler;
 import com.agentdsl.core.exception.DslCompilationException;
@@ -51,11 +52,18 @@ public class ValidateCommand implements Callable<Integer> {
             if (jsonOutput) {
                 printJsonSuccess(result);
             } else {
-                System.out.println("✅ 校验通过: " + scriptPath);
+                System.out.println("✅ 语法校验通过: " + scriptPath);
                 System.out.printf("   发现 %d 个 Agent, %d 个工具, %d 个工作流%n",
                         result.getAgents().size(),
                         result.getTools().size(),
                         result.getWorkflows().size());
+
+                if (result.getDiagnostics() != null && !result.getDiagnostics().isEmpty()) {
+                    System.out.println("⚠️  Compilation Warnings:");
+                    for (Diagnostic diag : result.getDiagnostics()) {
+                        System.out.printf("  - [%s] %s%n", diag.getTarget(), diag.getMessage());
+                    }
+                }
             }
             return 0;
 
@@ -63,7 +71,7 @@ public class ValidateCommand implements Callable<Integer> {
             if (jsonOutput) {
                 printJsonError(e);
             } else {
-                System.err.println("❌ 校验失败: " + scriptPath);
+                System.err.println("❌ 语法校验失败: " + scriptPath);
                 System.err.println("   错误码: " + e.getErrorCode());
                 System.err.println("   原因:   " + e.getMessage());
             }

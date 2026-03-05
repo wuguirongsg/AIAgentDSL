@@ -1,5 +1,6 @@
 package com.agentdsl.langchain4j;
 
+import com.agentdsl.core.dsl.SkillExecutionContext;
 import com.agentdsl.core.spec.ParameterSpec;
 import com.agentdsl.core.spec.ToolSpec;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -14,6 +15,7 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.BiFunction;
 
 /**
  * LangChain4j 工具桥接器。
@@ -24,9 +26,23 @@ public class LangChainToolBridge {
     private static final Logger log = LoggerFactory.getLogger(LangChainToolBridge.class);
 
     /**
+     * 工具调度解析器：允许 Logic Skill 的 execute 闭包通过 toolCall() 调用已注册的工具。
+     */
+    private BiFunction<String, Map<String, Object>, String> toolCallResolver;
+
+    /**
      * 工具转换结果：包含规范和执行器。
      */
     public record ToolEntry(ToolSpecification specification, ToolExecutor executor) {
+    }
+
+    /**
+     * 设置工具调度解析器。
+     * 传入一个 (toolName, paramsMap) -> resultString 的函数，
+     * 使得 Logic Skill 的 execute 闭包中可以调用 toolCall("http_get", [...])。
+     */
+    public void setToolCallResolver(BiFunction<String, Map<String, Object>, String> resolver) {
+        this.toolCallResolver = resolver;
     }
 
     /**
@@ -101,6 +117,14 @@ public class LangChainToolBridge {
 
                     Object body = toolSpec.getExecuteBody();
                     if (body instanceof Closure<?> closure) {
+                        // 注入 SkillExecutionContext 作为闭包 delegate，
+                        // 使得闭包内可以调用 toolCall("toolName", params)
+                        if (toolCallResolver != null) {
+                            SkillExecutionContext ctx = new SkillExecutionContext(toolCallResolver);
+                            closure.setDelegate(ctx);
+                            closure.setResolveStrategy(Closure.DELEGATE_FIRST);
+                        }
+
                         Object result;
                         if (closure.getMaximumNumberOfParameters() == 0) {
                             result = closure.call();
@@ -287,7 +311,7 @@ public class LangChainToolBridge {
             for (int i = 0; i < methodParams.length; i++) {
                 String paramName = methodParams[i].getName();
                 Object value = parsedParams.get(paramName);
-                args[i] = convertArg(value, methodParams[i].getType());
+                args[i] = com.agentdsl.core.utils.ConvertUtils.convertArg(value, methodParams[i].getType());
             }
 
             Object result = method.invoke(bean, args);
@@ -296,27 +320,5 @@ public class LangChainToolBridge {
             log.error("工具 '{}' Bean 方法执行失败", toolSpec.getName(), e);
             return "Error executing tool: " + e.getMessage();
         }
-    }
-
-    /**
-     * 基础类型转换。
-     */
-    private Object convertArg(Object value, Class<?> targetType) {
-        if (value == null)
-            return null;
-        if (targetType.isAssignableFrom(value.getClass()))
-            return value;
-        String str = value.toString();
-        if (targetType == int.class || targetType == Integer.class)
-            return Integer.parseInt(str);
-        if (targetType == long.class || targetType == Long.class)
-            return Long.parseLong(str);
-        if (targetType == double.class || targetType == Double.class)
-            return Double.parseDouble(str);
-        if (targetType == float.class || targetType == Float.class)
-            return Float.parseFloat(str);
-        if (targetType == boolean.class || targetType == Boolean.class)
-            return Boolean.parseBoolean(str);
-        return str;
     }
 }

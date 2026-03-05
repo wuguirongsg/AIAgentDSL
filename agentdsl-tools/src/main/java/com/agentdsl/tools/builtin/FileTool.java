@@ -37,7 +37,7 @@ public class FileTool {
     }
 
     @AgentTool(name = "file_read", description = "读取指定路径的文件内容。仅允许访问白名单目录下的文件。")
-    public String fileRead(@ToolParam(description = "文件路径") String filePath) {
+    public String fileRead(@ToolParam(name = "filePath", description = "文件路径") String filePath) {
         try {
             Path path = Paths.get(filePath).toAbsolutePath().normalize();
 
@@ -70,8 +70,8 @@ public class FileTool {
 
     @AgentTool(name = "file_write", description = "将内容写入指定路径的文件。仅允许写入白名单目录下的文件。")
     public String fileWrite(
-            @ToolParam(description = "文件路径") String filePath,
-            @ToolParam(description = "要写入的内容") String content) {
+            @ToolParam(name = "filePath", description = "文件路径") String filePath,
+            @ToolParam(name = "content", description = "要写入的内容") String content) {
         try {
             Path path = Paths.get(filePath).toAbsolutePath().normalize();
 

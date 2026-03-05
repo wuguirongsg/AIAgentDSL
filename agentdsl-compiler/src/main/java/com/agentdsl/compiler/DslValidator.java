@@ -8,6 +8,7 @@ import com.agentdsl.core.spec.StepSpec;
 import com.agentdsl.core.spec.ToolSpec;
 import com.agentdsl.core.spec.WorkflowSpec;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -29,14 +30,18 @@ public class DslValidator {
 
     /**
      * 校验所有编译产出物，包括引用存在性校验。
+     * 
+     * @return 编译过程产生的诊断信息列表
      */
-    public static void validateAll(List<AgentSpec> agents, List<ToolSpec> tools,
+    public static List<Diagnostic> validateAll(List<AgentSpec> agents, List<ToolSpec> tools,
             List<WorkflowSpec> workflows, List<SkillSpec> skills) {
+        List<Diagnostic> diagnostics = new ArrayList<>();
+
         for (AgentSpec agent : agents) {
             validateAgent(agent);
         }
         for (ToolSpec tool : tools) {
-            validateTool(tool);
+            validateTool(tool, diagnostics);
         }
         for (WorkflowSpec workflow : workflows) {
             validateWorkflow(workflow);
@@ -54,14 +59,16 @@ public class DslValidator {
         if (!skills.isEmpty()) {
             validateSkillReferences(agents, skills);
         }
+
+        return diagnostics;
     }
 
     /**
      * 向后兼容重载方法（无 Skills 参数版本）。
      */
-    public static void validateAll(List<AgentSpec> agents, List<ToolSpec> tools,
+    public static List<Diagnostic> validateAll(List<AgentSpec> agents, List<ToolSpec> tools,
             List<WorkflowSpec> workflows) {
-        validateAll(agents, tools, workflows, List.of());
+        return validateAll(agents, tools, workflows, List.of());
     }
 
     /**
@@ -92,7 +99,7 @@ public class DslValidator {
      * 必填项：name, description, execute
      * 增强校验：returnType、timeoutSeconds、参数约束
      */
-    public static void validateTool(ToolSpec tool) {
+    public static void validateTool(ToolSpec tool, List<Diagnostic> diagnostics) {
         if (tool.getName() == null || tool.getName().isBlank()) {
             throw new DslCompilationException("ADSL-001",
                     "Tool 缺少必填项: name");
@@ -107,30 +114,44 @@ public class DslValidator {
         }
 
         // v1.1+ 增强校验
-        validateToolReturnType(tool);
-        validateToolTimeout(tool);
+        validateToolReturnType(tool, diagnostics);
+        validateToolTimeout(tool, diagnostics);
         validateToolParameters(tool);
+    }
+
+    /**
+     * 兼容旧版本方法
+     */
+    public static void validateTool(ToolSpec tool) {
+        validateTool(tool, new ArrayList<>());
     }
 
     /**
      * 校验 returnType 是否在合法值列表内。
      */
-    private static void validateToolReturnType(ToolSpec tool) {
+    private static void validateToolReturnType(ToolSpec tool, List<Diagnostic> diagnostics) {
         if (tool.getReturnType() != null && !VALID_RETURN_TYPES.contains(tool.getReturnType())) {
-            throw new DslCompilationException("ADSL-002",
+            diagnostics.add(new Diagnostic(Diagnostic.Severity.WARNING,
                     "Tool '" + tool.getName() + "' 的 returnType '" + tool.getReturnType()
-                            + "' 不合法，允许值: " + VALID_RETURN_TYPES);
+                            + "' 不在推荐的常见类型中: " + VALID_RETURN_TYPES,
+                    "Tool: " + tool.getName()));
+
+            // 这里为了平滑升级，可以仅作为 Warning 而不抛出异常。如果要严格限制：
+            // throw new DslCompilationException("ADSL-002",
+            // "Tool '" + tool.getName() + "' 的 returnType '" + tool.getReturnType()
+            // + "' 不合法，允许值: " + VALID_RETURN_TYPES);
         }
     }
 
     /**
      * 校验 timeoutSeconds 在合理范围内 (1-300)。
      */
-    private static void validateToolTimeout(ToolSpec tool) {
+    private static void validateToolTimeout(ToolSpec tool, List<Diagnostic> diagnostics) {
         if (tool.getTimeoutSeconds() < 1 || tool.getTimeoutSeconds() > 300) {
-            throw new DslCompilationException("ADSL-002",
-                    "Tool '" + tool.getName() + "' 的 timeoutSeconds 必须在 1-300 之间，当前值: "
-                            + tool.getTimeoutSeconds());
+            diagnostics.add(new Diagnostic(Diagnostic.Severity.WARNING,
+                    "Tool '" + tool.getName() + "' 的 timeoutSeconds " + tool.getTimeoutSeconds()
+                            + " 超出了建议范围 (1-300)。可能导致模型等待过久或被过早中断。",
+                    "Tool: " + tool.getName()));
         }
     }
 

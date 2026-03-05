@@ -13,6 +13,11 @@ import java.lang.annotation.Target;
 public @interface ToolParam {
 
     /**
+     * 参数名称 (如果不指定，将尝试使用反射获取的参数名，编译时未加 -parameters 可能会导致获得 arg0)。
+     */
+    String name() default "";
+
+    /**
      * 参数描述。
      */
     String description() default "";

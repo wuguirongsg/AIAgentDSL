@@ -52,10 +52,15 @@ public class ToolScanner {
             Parameter[] methodParams = method.getParameters();
             for (Parameter param : methodParams) {
                 ParameterSpec paramSpec = new ParameterSpec();
-                paramSpec.setName(param.getName());
+                ToolParam toolParam = param.getAnnotation(ToolParam.class);
+
+                if (toolParam != null && !toolParam.name().isEmpty()) {
+                    paramSpec.setName(toolParam.name());
+                } else {
+                    paramSpec.setName(param.getName());
+                }
                 paramSpec.setType(mapJavaType(param.getType()));
 
-                ToolParam toolParam = param.getAnnotation(ToolParam.class);
                 if (toolParam != null) {
                     paramSpec.setDescription(toolParam.description());
                     paramSpec.setRequired(toolParam.required());

@@ -37,8 +37,7 @@ public class McpToolProviderBridge {
     public record McpToolsResult(
             List<McpClient> clients,
             List<ToolSpecification> toolSpecifications,
-            Map<String, ToolExecutor> toolExecutors
-    ) {
+            Map<String, ToolExecutor> toolExecutors) {
         public void close() {
             for (McpClient client : clients) {
                 try {
@@ -71,6 +70,7 @@ public class McpToolProviderBridge {
 
             if (serverSpec.getTimeout() > 0) {
                 clientBuilder.toolExecutionTimeout(Duration.ofSeconds(serverSpec.getTimeout()));
+                clientBuilder.initializationTimeout(Duration.ofSeconds(serverSpec.getTimeout()));
             }
 
             McpClient client = clientBuilder.build();

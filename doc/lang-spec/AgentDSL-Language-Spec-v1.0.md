@@ -225,7 +225,7 @@ guardrailProp     ::= "maxTokensPerRequest" INTEGER
 outputSchemaBlock ::= "outputSchema" "{" { fieldDecl } "}" ;
 fieldDecl         ::= "field" STRING "," STRING "," STRING ;
 
-(* === Workflow 声明 === *)
+(* === Workflow 声明 === *) //已过时，v1.1做了调整
 workflowDecl    ::= "workflow" "(" STRING ")" "{" workflowBody "}" ;
 workflowBody    ::= descriptionProp
                    | agentsBlock
@@ -262,7 +262,7 @@ CLOSURE          ::= "{" groovy_code "}" ;
 | ---------- | ------------------------------------------- |
 | `agent`    | `name`, `model.provider`, `model.modelName` |
 | `tool`     | `name`, `description`, `execute`            |
-| `workflow` | `name`, `agents`（至少 1 个 ref）, `flow`   |
+| `workflow` | `name`, `agents`（至少 1 个 ref）, `flow`   | //已过时，v1.1调整为steps
 
 违反必填规则时，编译器应抛出 `DslCompilationException`，包含清晰的错误位置和缺失字段名。
 
@@ -271,9 +271,9 @@ CLOSURE          ::= "{" groovy_code "}" ;
 `tools { include "toolName" }` 的解析规则：
 
 1. 首先在当前脚本中查找同名 `tool` 定义
-2. 其次在 `AgentRegistry` 中查找已注册的工具
-3. 最后在 classpath 中查找带有 `@Tool` 注解的 Bean 方法
-4. 若未找到，抛出 `ToolNotFoundException`
+2. 其次在 `AgentRegistry` 中查找已注册的工具                            //已过时，v1.1调整
+3. 最后在 classpath 中查找带有 `@Tool` 注解的 Bean 方法                 //已过时，v1.1调整
+4. 若未找到，抛出 `ToolNotFoundException`                             //已过时，v1.1调整
 
 ### 4.4 环境变量引用
 
@@ -281,7 +281,7 @@ CLOSURE          ::= "{" groovy_code "}" ;
 
 1. 优先读取 JVM 系统属性 `System.getProperty("VAR_NAME")`
 2. 其次读取环境变量 `System.getenv("VAR_NAME")`
-3. 若均未找到，抛出 `ConfigurationException`
+3. 若均未找到，抛出 `ConfigurationException`                         //已过时，v1.1调整
 
 ### 4.5 闭包作用域
 
@@ -291,7 +291,7 @@ CLOSURE          ::= "{" groovy_code "}" ;
 
 ---
 
-## 5. 内置函数
+## 5. 内置函数   //已过时，v1.1调整
 
 | 函数       | 签名                                 | 描述                     |
 | ---------- | ------------------------------------ | ------------------------ |
@@ -305,7 +305,7 @@ CLOSURE          ::= "{" groovy_code "}" ;
 
 ---
 
-## 6. Provider 注册表
+## 6. Provider 注册表  //已过时，v1.1调整
 
 预置支持的 `provider` 标识及其对应的 LangChain4j 实现：
 
@@ -398,7 +398,7 @@ agent("sentiment-analyzer") {
 }
 ```
 
-### 7.4 工作流（预览）
+### 7.4 工作流（预览）  //已过时，参见v1.1调整
 
 ```groovy
 workflow("support-pipeline") {
@@ -433,7 +433,7 @@ workflow("support-pipeline") {
 
 ---
 
-## 8. 错误代码
+## 8. 错误代码  //参见v1.1调整
 
 编译器和运行时应产生标准化的错误代码：
 

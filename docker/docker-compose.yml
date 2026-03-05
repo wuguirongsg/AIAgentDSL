@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  agentdsl:
+    build: .
+    volumes:
+      - ../examples:/workspace/examples
+      - ../output:/workspace/output
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    command: [ "run", "examples/hello.agent.groovy", "--message", "Hello, from Docker!" ]

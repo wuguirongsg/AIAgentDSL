@@ -57,6 +57,49 @@ public class AgentRegistry {
         this.toolBridge = toolBridge;
         this.ragFactory = ragFactory;
         this.mcpBridge = new McpToolProviderBridge();
+
+        // 注入 toolCall 解析器：允许 Logic Skill 闭包内调用已注册的全局工具
+        this.toolBridge.setToolCallResolver((toolName, params) -> {
+            ToolSpec tool = globalTools.get(toolName);
+            if (tool == null) {
+                return "Error: 工具 '" + toolName + "' 未注册。已注册工具: " + globalTools.keySet();
+            }
+            try {
+                if (tool.isBeanMethod()) {
+                    // @AgentTool 注解的 Java 方法：使用 ToolSpec 的 ParameterSpec 匹配参数
+                    java.lang.reflect.Method method = tool.getToolBeanMethod();
+                    Object bean = tool.getToolBean();
+                    java.lang.reflect.Parameter[] methodParams = method.getParameters();
+                    List<com.agentdsl.core.spec.ParameterSpec> paramSpecs = tool.getParameters();
+
+                    Object[] args = new Object[methodParams.length];
+                    for (int i = 0; i < methodParams.length; i++) {
+                        // 优先用 ToolSpec 中 ParameterSpec 的名称（来自 @ToolParam 扫描）
+                        String paramName = (paramSpecs != null && i < paramSpecs.size())
+                                ? paramSpecs.get(i).getName()
+                                : methodParams[i].getName();
+                        Object val = params.get(paramName);
+                        args[i] = com.agentdsl.core.utils.ConvertUtils.convertArg(val, methodParams[i].getType());
+                        log.info(">>>> toolCall() debug: 匹配参数 i={}, name={}(from spec? {}), val={}, finalArg={}",
+                                i, paramName, (paramSpecs != null && i < paramSpecs.size()), val, args[i]);
+                    }
+                    Object result = method.invoke(bean, args);
+                    return result != null ? result.toString() : "null";
+                }
+                // DSL 内联闭包工具
+                Object body = tool.getExecuteBody();
+                if (body instanceof groovy.lang.Closure<?> closure) {
+                    Object result = closure.getMaximumNumberOfParameters() == 0
+                            ? closure.call()
+                            : closure.call(params);
+                    return result != null ? result.toString() : "null";
+                }
+                return "Error: 工具 '" + toolName + "' 没有可执行逻辑。";
+            } catch (Exception e) {
+                log.error("toolCall('{}') 执行失败", toolName, e);
+                return "Error: toolCall('" + toolName + "') 执行失败: " + e.getMessage();
+            }
+        });
     }
 
     /**

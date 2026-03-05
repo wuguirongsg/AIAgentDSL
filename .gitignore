@@ -1,7 +1,9 @@
 # AgentDSL build artifacts
 .gradle/
 build/
+output/
 out/
+bin/
 
 # IDE
 .idea/
@@ -17,6 +19,17 @@ Thumbs.db
 
 # Logs
 *.log
-bin/
+
+# Temp/Dev
 dev/
 dev2/
+/tmp/
+/temp/
+
+# Configuration
+local.properties
+
+# Secrets
+.env
+*.key
+*.pem

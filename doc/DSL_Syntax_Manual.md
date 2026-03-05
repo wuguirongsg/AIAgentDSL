@@ -4,13 +4,6 @@
 > 所有 DSL 引擎的实现必须遵循本规范。
 
 > [!NOTE]
-> v1.1 相对 v1.0 的主要变更：
-> - 重新设计工作流语法（`steps`/`parallel`/`condition` 替代 `flow`/`start`/`node`）
-> - 新增 `@AgentTool`/`@ToolParam` 注解工具发现机制
-> - 新增热加载语义
-> - 新增安全沙箱规则（超时保护、AST 黑名单）
-> - 更新 Provider 表和 LangChain4j API 映射
-
 > v1.2 相对 v1.1 的主要变更：
 > - **核心重构**：ToolSpec 工具定义深度增强（新增 `returns`、`timeout`、`onError`、`permissions` 及 Parameter 的高级校验如 `pattern`、`min`、`max`、`enumValues`）。
 > - **内置能力**：引入 `BuiltinToolRegistry`，内置 `http_get`, `http_post`, `json_parse`, `json_query`, `file_read`, `file_write` 工具。

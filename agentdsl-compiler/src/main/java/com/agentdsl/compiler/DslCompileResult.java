@@ -17,6 +17,7 @@ public class DslCompileResult {
     private final List<ToolSpec> tools;
     private final List<WorkflowSpec> workflows;
     private final List<SkillSpec> skills;
+    private final List<Diagnostic> diagnostics;
 
     public DslCompileResult(List<AgentSpec> agents, List<ToolSpec> tools) {
         this(agents, tools, List.of(), List.of());
@@ -28,10 +29,16 @@ public class DslCompileResult {
 
     public DslCompileResult(List<AgentSpec> agents, List<ToolSpec> tools,
             List<WorkflowSpec> workflows, List<SkillSpec> skills) {
+        this(agents, tools, workflows, skills, List.of());
+    }
+
+    public DslCompileResult(List<AgentSpec> agents, List<ToolSpec> tools,
+            List<WorkflowSpec> workflows, List<SkillSpec> skills, List<Diagnostic> diagnostics) {
         this.agents = Collections.unmodifiableList(agents);
         this.tools = Collections.unmodifiableList(tools);
         this.workflows = Collections.unmodifiableList(workflows);
         this.skills = Collections.unmodifiableList(skills);
+        this.diagnostics = Collections.unmodifiableList(diagnostics);
     }
 
     public List<AgentSpec> getAgents() {
@@ -48,6 +55,10 @@ public class DslCompileResult {
 
     public List<SkillSpec> getSkills() {
         return skills;
+    }
+
+    public List<Diagnostic> getDiagnostics() {
+        return diagnostics;
     }
 
     /**
@@ -75,6 +86,7 @@ public class DslCompileResult {
         return "DslCompileResult{agents=" + agents.size() +
                 ", tools=" + tools.size() +
                 ", workflows=" + workflows.size() +
-                ", skills=" + skills.size() + '}';
+                ", skills=" + skills.size() +
+                ", diagnostics=" + diagnostics.size() + '}';
     }
 }

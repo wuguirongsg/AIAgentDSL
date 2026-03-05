@@ -47,17 +47,19 @@ class DslValidatorEnhancedTest {
         }
 
         @Test
-        @DisplayName("非法 returnType 应抛出 ADSL-002")
-        void shouldThrowOnInvalidReturnType() {
+        @DisplayName("非法 returnType 应产生 Warning Diagnostic")
+        void shouldProduceWarningOnInvalidReturnType() {
             ToolSpec tool = createValidTool("bad-return");
             tool.setReturnType("invalid_type");
 
-            DslCompilationException ex = assertThrows(
-                    DslCompilationException.class,
-                    () -> DslValidator.validateTool(tool));
-            assertTrue(ex.getMessage().contains("ADSL-002"));
-            assertTrue(ex.getMessage().contains("returnType"));
-            assertTrue(ex.getMessage().contains("invalid_type"));
+            java.util.List<Diagnostic> diagnostics = new java.util.ArrayList<>();
+            assertDoesNotThrow(() -> DslValidator.validateTool(tool, diagnostics));
+
+            assertEquals(1, diagnostics.size());
+            Diagnostic diag = diagnostics.get(0);
+            assertEquals(Diagnostic.Severity.WARNING, diag.getSeverity());
+            assertTrue(diag.getMessage().contains("returnType"));
+            assertTrue(diag.getMessage().contains("invalid_type"));
         }
     }
 
@@ -85,28 +87,33 @@ class DslValidatorEnhancedTest {
         }
 
         @Test
-        @DisplayName("超时为 0 应抛出 ADSL-002")
-        void shouldThrowOnZeroTimeout() {
+        @DisplayName("超时为 0 应产生 Warning Diagnostic")
+        void shouldProduceWarningOnZeroTimeout() {
             ToolSpec tool = createValidTool("zero-timeout");
             tool.setTimeoutSeconds(0);
 
-            DslCompilationException ex = assertThrows(
-                    DslCompilationException.class,
-                    () -> DslValidator.validateTool(tool));
-            assertTrue(ex.getMessage().contains("ADSL-002"));
-            assertTrue(ex.getMessage().contains("timeoutSeconds"));
+            java.util.List<Diagnostic> diagnostics = new java.util.ArrayList<>();
+            assertDoesNotThrow(() -> DslValidator.validateTool(tool, diagnostics));
+
+            assertEquals(1, diagnostics.size());
+            Diagnostic diag = diagnostics.get(0);
+            assertEquals(Diagnostic.Severity.WARNING, diag.getSeverity());
+            assertTrue(diag.getMessage().contains("timeoutSeconds"));
         }
 
         @Test
-        @DisplayName("超时超过 300 应抛出 ADSL-002")
-        void shouldThrowOnOversizedTimeout() {
+        @DisplayName("超时超过 300 应产生 Warning Diagnostic")
+        void shouldProduceWarningOnOversizedTimeout() {
             ToolSpec tool = createValidTool("huge-timeout");
             tool.setTimeoutSeconds(301);
 
-            DslCompilationException ex = assertThrows(
-                    DslCompilationException.class,
-                    () -> DslValidator.validateTool(tool));
-            assertTrue(ex.getMessage().contains("ADSL-002"));
+            java.util.List<Diagnostic> diagnostics = new java.util.ArrayList<>();
+            assertDoesNotThrow(() -> DslValidator.validateTool(tool, diagnostics));
+
+            assertEquals(1, diagnostics.size());
+            Diagnostic diag = diagnostics.get(0);
+            assertEquals(Diagnostic.Severity.WARNING, diag.getSeverity());
+            assertTrue(diag.getMessage().contains("timeoutSeconds"));
         }
     }
 

@@ -61,18 +61,24 @@ public class AgentDslEngine implements AutoCloseable {
 
     /**
      * 从 DSL 脚本字符串加载并注册所有 Agent 和工具。
+     * 
+     * @return 编译结果，包含注册的实体和诊断信息
      */
-    public void load(String dslScript) {
+    public DslCompileResult load(String dslScript) {
         DslCompileResult result = compiler.compile(dslScript);
         registerAll(result);
+        return result;
     }
 
     /**
      * 从文件加载 DSL 脚本。
+     * 
+     * @return 编译结果，包含注册的实体和诊断信息
      */
-    public void loadFile(Path scriptPath) {
+    public DslCompileResult loadFile(Path scriptPath) {
         DslCompileResult result = compiler.compileFile(scriptPath);
         registerAll(result);
+        return result;
     }
 
     /**

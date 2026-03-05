@@ -44,6 +44,7 @@ subprojects {
         // Test
         testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
         testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+        testImplementation("org.wiremock:wiremock:3.9.1")
     }
 
     tasks.test {
