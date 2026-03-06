@@ -12,6 +12,8 @@ import com.agentdsl.langchain4j.LangChainToolBridge;
 import com.agentdsl.langchain4j.LangChainToolBridge.ToolEntry;
 import com.agentdsl.mcp.McpToolProviderBridge;
 import com.agentdsl.mcp.McpToolProviderBridge.McpToolsResult;
+import com.agentdsl.tools.ToolScanner;
+import com.agentdsl.tools.builtin.NativeBrowserTool;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
@@ -42,6 +44,7 @@ public class AgentRegistry {
     private final LangChainRagFactory ragFactory;
     private final McpToolProviderBridge mcpBridge;
     private final List<McpToolsResult> mcpConnections = new ArrayList<>();
+    private final List<NativeBrowserTool> activeBrowserTools = new ArrayList<>();
 
     public AgentRegistry() {
         this(new LangChainModelFactory(), new LangChainMemoryFactory(),
@@ -249,7 +252,10 @@ public class AgentRegistry {
         // 5. 处理 MCP 工具
         if (agentSpec.getMcp() != null && !agentSpec.getMcp().getServers().isEmpty()) {
             try {
-                McpToolsResult result = mcpBridge.connect(agentSpec.getMcp());
+                List<String> hitlActions = agentSpec.getBrowserUse() != null
+                        ? agentSpec.getBrowserUse().getHitlActions()
+                        : null;
+                McpToolsResult result = mcpBridge.connect(agentSpec.getMcp(), hitlActions);
                 mcpConnections.add(result);
                 toolSpecifications.addAll(result.toolSpecifications());
                 toolExecutors.putAll(result.toolExecutors());
@@ -262,7 +268,40 @@ public class AgentRegistry {
             }
         }
 
-        // 6. 组装实例
+        // 6. 处理 Browser Use (NativeBrowserTool)
+        if (agentSpec.getBrowserUse() != null) {
+            log.info("Agent '{}' 启用了 Browser Use。初始化 NativeBrowserTool...", agentSpec.getName());
+            boolean headless = !agentSpec.getBrowserUse().isSandbox(); // 简单的沙箱映射 (可改)
+            NativeBrowserTool browserTool = new NativeBrowserTool(headless);
+            activeBrowserTools.add(browserTool);
+
+            List<String> hitlActions = agentSpec.getBrowserUse().getHitlActions();
+            SafetyGuard safetyGuard = new SafetyGuard();
+
+            List<ToolSpec> bTools = ToolScanner.scan(browserTool);
+            for (ToolSpec ts : bTools) {
+                ToolEntry entry = toolBridge.convert(ts);
+                String toolName = entry.specification().name();
+                ToolExecutor originalExecutor = entry.executor();
+
+                ToolExecutor wrappedExecutor = (toolExecutionRequest, memoryId) -> {
+                    if (hitlActions != null && hitlActions.contains(toolName)) {
+                        boolean confirmed = safetyGuard.confirmAction(toolName, toolExecutionRequest.arguments());
+                        if (!confirmed) {
+                            return "Error: Action cancelled by user during HITL confirmation.";
+                        }
+                    }
+                    return originalExecutor.execute(toolExecutionRequest, memoryId);
+                };
+
+                toolSpecifications.add(entry.specification());
+                toolExecutors.put(toolName, wrappedExecutor);
+            }
+            log.info("Agent '{}' 加载了 {} 个 NativeBrowserTool 方法",
+                    agentSpec.getName(), bTools.size());
+        }
+
+        // 7. 组装实例
         AgentInstance instance = new AgentInstance(
                 agentSpec, model, memory, toolSpecifications, toolExecutors, contentRetriever);
 
@@ -432,5 +471,20 @@ public class AgentRegistry {
         }
         mcpConnections.clear();
         log.info("所有 MCP 连接已关闭");
+    }
+
+    /**
+     * 关闭分配给各 Agent 的原生浏览器工具进程资源
+     */
+    public void closeNativeBrowsers() {
+        for (NativeBrowserTool tool : activeBrowserTools) {
+            try {
+                tool.close();
+            } catch (Exception e) {
+                log.warn("释放 NativeBrowserTool 资源异常: {}", e.getMessage());
+            }
+        }
+        activeBrowserTools.clear();
+        log.info("所有 NativeBrowserTool(Playwright) 资源已释放");
     }
 }

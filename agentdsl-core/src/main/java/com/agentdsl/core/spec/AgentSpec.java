@@ -22,6 +22,7 @@ public class AgentSpec {
     private GuardrailSpec guardrails;
     private OutputSchemaSpec outputSchema;
     private McpSpec mcp;
+    private BrowserUseSpec browserUse;
 
     public AgentSpec() {
     }
@@ -134,6 +135,14 @@ public class AgentSpec {
 
     public void setInlineSkills(List<SkillSpec> inlineSkills) {
         this.inlineSkills = inlineSkills;
+    }
+
+    public BrowserUseSpec getBrowserUse() {
+        return browserUse;
+    }
+
+    public void setBrowserUse(BrowserUseSpec browserUse) {
+        this.browserUse = browserUse;
     }
 
     @Override

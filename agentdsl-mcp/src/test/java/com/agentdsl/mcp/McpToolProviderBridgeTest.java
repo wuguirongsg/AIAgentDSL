@@ -27,7 +27,7 @@ class McpToolProviderBridgeTest {
         spec.getServers().add(server);
 
         DslRuntimeException ex = assertThrows(DslRuntimeException.class,
-                () -> bridge.connect(spec));
+                () -> bridge.connect(spec, null));
         assertTrue(ex.getMessage().contains("未配置 command"));
     }
 
@@ -40,7 +40,7 @@ class McpToolProviderBridgeTest {
         spec.getServers().add(server);
 
         DslRuntimeException ex = assertThrows(DslRuntimeException.class,
-                () -> bridge.connect(spec));
+                () -> bridge.connect(spec, null));
         assertTrue(ex.getMessage().contains("未配置 url"));
     }
 
@@ -52,7 +52,7 @@ class McpToolProviderBridgeTest {
         spec.getServers().add(server);
 
         DslRuntimeException ex = assertThrows(DslRuntimeException.class,
-                () -> bridge.connect(spec));
+                () -> bridge.connect(spec, null));
         assertTrue(ex.getMessage().contains("未配置 url"));
     }
 
@@ -65,7 +65,7 @@ class McpToolProviderBridgeTest {
         spec.getServers().add(server);
 
         DslRuntimeException ex = assertThrows(DslRuntimeException.class,
-                () -> bridge.connect(spec));
+                () -> bridge.connect(spec, null));
         assertTrue(ex.getMessage().contains("不支持的 MCP 传输方式"));
     }
 

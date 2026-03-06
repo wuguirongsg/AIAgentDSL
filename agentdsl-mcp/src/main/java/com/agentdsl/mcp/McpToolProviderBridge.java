@@ -52,7 +52,7 @@ public class McpToolProviderBridge {
     /**
      * 根据 McpSpec 创建 MCP 连接，返回工具规范和执行器。
      */
-    public McpToolsResult connect(McpSpec mcpSpec) {
+    public McpToolsResult connect(McpSpec mcpSpec, List<String> hitlActions) {
         List<McpClient> clients = new ArrayList<>();
         List<ToolSpecification> allToolSpecs = new ArrayList<>();
         Map<String, ToolExecutor> allToolExecutors = new HashMap<>();
@@ -90,7 +90,24 @@ public class McpToolProviderBridge {
                 allToolSpecs.add(spec);
                 // 创建 ToolExecutor 包装 McpClient.executeTool
                 final McpClient mcpClient = client;
+                final boolean requiresHitl = hitlActions != null && hitlActions.contains(spec.name());
                 allToolExecutors.put(spec.name(), (toolExecutionRequest, memoryId) -> {
+                    if (requiresHitl) {
+                        try {
+                            Class<?> safetyGuardClass = Class.forName("com.agentdsl.runtime.SafetyGuard");
+                            Object safetyGuard = safetyGuardClass.getDeclaredConstructor().newInstance();
+                            java.lang.reflect.Method confirmMethod = safetyGuardClass.getMethod("confirmAction",
+                                    String.class, String.class);
+                            boolean allowed = (boolean) confirmMethod.invoke(safetyGuard, spec.name(),
+                                    toolExecutionRequest.arguments());
+                            if (!allowed) {
+                                return "Action aborted by user via HITL intercept.";
+                            }
+                        } catch (Exception e) {
+                            log.error("Failed to invoke SafetyGuard", e);
+                            return "Action aborted. Error invoking safety check.";
+                        }
+                    }
                     try {
                         return mcpClient.executeTool(toolExecutionRequest);
                     } catch (Exception e) {

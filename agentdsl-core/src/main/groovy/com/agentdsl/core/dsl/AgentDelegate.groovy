@@ -103,4 +103,15 @@ class AgentDelegate {
         config.call()
     }
 
+    /** browser_use { server "@microsoft/playwright-mcp" } */
+    void browser_use(@DelegatesTo(BrowserUseDelegate) Closure config) {
+        def browserUseSpec = new BrowserUseSpec()
+        def delegate = new BrowserUseDelegate(browserUseSpec)
+        config.delegate = delegate
+        config.resolveStrategy = Closure.DELEGATE_FIRST
+        config.call()
+        spec.browserUse = browserUseSpec
+        // 隐式配置 MCP 被移除，改用 NativeBrowserTool
+    }
+
 }
