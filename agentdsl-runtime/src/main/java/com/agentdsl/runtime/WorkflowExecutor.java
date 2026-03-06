@@ -92,15 +92,37 @@ public class WorkflowExecutor {
         return result;
     }
 
-    /**
-     * 根据步骤类型分派执行。
-     */
     private void executeStep(StepSpec step, WorkflowContext ctx) {
-        switch (step.getType()) {
-            case SEQUENTIAL -> executeSequential(step, ctx);
-            case PARALLEL -> executeParallel(step, ctx);
-            case CONDITION -> executeCondition(step, ctx);
-            case LOOP -> executeLoop(step, ctx);
+        long stepStart = System.currentTimeMillis();
+        if (com.agentdsl.core.metrics.DebugTracer.isEnabled()) {
+            java.util.Map<String, Object> details = new java.util.HashMap<>();
+            details.put("stepType", step.getType().name());
+            details.put("agentRef", step.getAgentRef());
+            com.agentdsl.core.metrics.DebugTracer.record(com.agentdsl.core.metrics.DebugEvent.Type.WORKFLOW_STEP_START,
+                    step.getName(), details);
+            com.agentdsl.core.metrics.DebugTracer.enter();
+        }
+
+        try {
+            switch (step.getType()) {
+                case SEQUENTIAL -> executeSequential(step, ctx);
+                case PARALLEL -> executeParallel(step, ctx);
+                case CONDITION -> executeCondition(step, ctx);
+                case LOOP -> executeLoop(step, ctx);
+            }
+        } finally {
+            if (com.agentdsl.core.metrics.DebugTracer.isEnabled()) {
+                com.agentdsl.core.metrics.DebugTracer.exit();
+                Object output = ctx.getStepResult(step.getName());
+                // Handle Parallel/Condition/Loop which might not set single step result
+                if (output == null && step.getType() != com.agentdsl.core.spec.StepSpec.StepType.SEQUENTIAL) {
+                    output = ctx.getLastOutput();
+                }
+                long duration = System.currentTimeMillis() - stepStart;
+                com.agentdsl.core.metrics.DebugTracer.record(
+                        com.agentdsl.core.metrics.DebugEvent.Type.WORKFLOW_STEP_END, step.getName(),
+                        java.util.Map.of("output", output != null ? output : "null", "durationMs", duration));
+            }
         }
     }
 
@@ -169,6 +191,12 @@ public class WorkflowExecutor {
         ExecutorService executor = Executors.newFixedThreadPool(
                 Math.min(parallelSteps.size(), maxParallelThreads));
 
+        // For DebugTracer ThreadLocal across parallel executions, we would need
+        // a thread context propagator. For now, since tracing parallel steps
+        // in a linear console might be messy, we just collect main thread events.
+        // We will propagate tracer state to child threads.
+        final boolean isTracing = com.agentdsl.core.metrics.DebugTracer.isEnabled();
+
         try {
             // 提交所有并行任务
             List<Future<ParallelStepResult>> futures = new ArrayList<>();
@@ -176,9 +204,24 @@ public class WorkflowExecutor {
                 // 每个并行步骤共享相同的上下文输入，但独立保存结果
                 final String input = applyInputTransform(parallelStep, ctx);
                 futures.add(executor.submit(() -> {
-                    String output = agentExecutor.chat(parallelStep.getAgentRef(), input);
-                    Object finalOutput = applyOutputTransform(parallelStep, output);
-                    return new ParallelStepResult(parallelStep.getName(), finalOutput);
+                    if (isTracing) {
+                        com.agentdsl.core.metrics.DebugTracer.enable();
+                        // Currently can't merge back parallel traces easily without refactoring
+                        // DebugTracer,
+                        // so we just instrument the main thread components for now or just let tasks
+                        // run.
+                        // For simplicity in CLI debugging, parallel agent calls might be missed if we
+                        // don't collect them.
+                    }
+                    try {
+                        String output = agentExecutor.chat(parallelStep.getAgentRef(), input);
+                        Object finalOutput = applyOutputTransform(parallelStep, output);
+                        return new ParallelStepResult(parallelStep.getName(), finalOutput);
+                    } finally {
+                        if (isTracing) {
+                            com.agentdsl.core.metrics.DebugTracer.disable();
+                        }
+                    }
                 }));
             }
 

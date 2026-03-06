@@ -24,6 +24,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import com.agentdsl.core.metrics.DebugEvent;
+import com.agentdsl.core.metrics.DebugTracer;
+
 /**
  * Agent 执行引擎。
  * 负责调用 LangChain4j 模型，处理工具调用循环。
@@ -60,117 +63,213 @@ public class AgentExecutor {
 
         log.info("[{}] 收到消息: {}", agentName, truncate(userMessage, 100));
 
-        // 1. 构建消息列表
-        List<ChatMessage> messages = new ArrayList<>();
-
-        // SystemPrompt
-        String systemPrompt = instance.getSpec().getSystemPrompt();
-        if (systemPrompt != null && !systemPrompt.isBlank()) {
-            messages.add(SystemMessage.from(systemPrompt));
+        if (DebugTracer.isEnabled()) {
+            Map<String, Object> details = new HashMap<>();
+            details.put("modelProvider", instance.getSpec().getModel().getProvider());
+            details.put("modelName", instance.getSpec().getModel().getModelName());
+            details.put("systemPrompt", instance.getSpec().getSystemPrompt());
+            details.put("userMessage", userMessage);
+            DebugTracer.record(DebugEvent.Type.AGENT_START, agentName, details);
+            DebugTracer.enter();
         }
 
-        // 从记忆中恢复历史消息
-        if (instance.getMemory() != null) {
-            messages.addAll(instance.getMemory().messages());
-        }
+        try {
+            // 1. 构建消息列表
+            List<ChatMessage> messages = new ArrayList<>();
 
-        // 添加用户消息（可能经过 RAG 增强）
-        String augmentedMessage = augmentWithRag(instance, userMessage);
-        UserMessage userMsg = UserMessage.from(augmentedMessage);
-        messages.add(userMsg);
-
-        // 保存到记忆
-        if (instance.getMemory() != null) {
-            instance.getMemory().add(userMsg);
-        }
-
-        // 2. 收集工具
-        List<ToolSpecification> tools = instance.hasTools()
-                ? new ArrayList<>(instance.getToolSpecifications())
-                : new ArrayList<>();
-        Map<String, ToolExecutor> allToolExecutors = instance.hasTools()
-                ? new HashMap<>(instance.getToolExecutors())
-                : new HashMap<>();
-
-        for (int iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
-            ChatResponse response;
-
-            try {
-                ChatRequest.Builder requestBuilder = ChatRequest.builder()
-                        .messages(messages);
-                if (!tools.isEmpty()) {
-                    requestBuilder.toolSpecifications(tools);
-                }
-                response = model.chat(requestBuilder.build());
-            } catch (Exception e) {
-                throw new DslRuntimeException("ADSL-020",
-                        "Agent '" + instance.getName() + "' 模型调用失败: " + e.getMessage(), e);
+            // SystemPrompt
+            String systemPrompt = instance.getSpec().getSystemPrompt();
+            if (systemPrompt != null && !systemPrompt.isBlank()) {
+                messages.add(SystemMessage.from(systemPrompt));
             }
 
-            AiMessage aiMessage = response.aiMessage();
-
-            // 保存 AI 消息到记忆
+            // 从记忆中恢复历史消息
             if (instance.getMemory() != null) {
-                instance.getMemory().add(aiMessage);
+                messages.addAll(instance.getMemory().messages());
             }
-            messages.add(aiMessage);
 
-            // 3. 检查是否有工具调用
-            if (!aiMessage.hasToolExecutionRequests()) {
-                // 没有工具调用，直接返回文本回复
-                String text = aiMessage.text();
-                // 某些模型（如 Gemini）在工具调用完成后可能返回 null text
-                // 此时说明任务已完成，返回最后一条工具执行结果的摘要
-                if (text == null || text.isBlank()) {
-                    // 从 messages 里找最后一条 ToolExecutionResultMessage 的内容作为回复
-                    String lastToolResult = findLastToolResult(messages);
-                    text = lastToolResult != null
-                            ? lastToolResult
-                            : "✅ 任务已完成（模型无额外回复）";
+            // 添加用户消息（可能经过 RAG 增强）
+            String augmentedMessage = augmentWithRag(instance, userMessage);
+            UserMessage userMsg = UserMessage.from(augmentedMessage);
+            messages.add(userMsg);
+
+            // 保存到记忆
+            if (instance.getMemory() != null) {
+                instance.getMemory().add(userMsg);
+            }
+
+            // 2. 收集工具
+            List<ToolSpecification> tools = instance.hasTools()
+                    ? new ArrayList<>(instance.getToolSpecifications())
+                    : new ArrayList<>();
+            Map<String, ToolExecutor> allToolExecutors = instance.hasTools()
+                    ? new HashMap<>(instance.getToolExecutors())
+                    : new HashMap<>();
+
+            for (int iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
+                ChatResponse response;
+
+                try {
+                    ChatRequest.Builder requestBuilder = ChatRequest.builder()
+                            .messages(messages);
+
+                    if (DebugTracer.isEnabled()) {
+                        Map<String, Object> reqDetails = new HashMap<>();
+                        reqDetails.put("iteration", iteration);
+                        List<Map<String, String>> msgList = messages.stream().map(m -> {
+                            String cText = "(tool call/result)";
+                            if (m instanceof dev.langchain4j.data.message.UserMessage um) {
+                                cText = um.contents().stream()
+                                        .filter(c -> c instanceof dev.langchain4j.data.message.TextContent)
+                                        .map(c -> ((dev.langchain4j.data.message.TextContent) c).text())
+                                        .collect(Collectors.joining("\\n"));
+                            } else if (m instanceof dev.langchain4j.data.message.AiMessage aim) {
+                                cText = aim.text() != null ? aim.text() : cText;
+                            } else if (m instanceof dev.langchain4j.data.message.SystemMessage sm) {
+                                cText = sm.text();
+                            } else if (m instanceof dev.langchain4j.data.message.ToolExecutionResultMessage trm) {
+                                cText = trm.text();
+                            }
+                            return Map.of("type", m.type().name(), "text", cText);
+                        }).collect(Collectors.toList());
+                        reqDetails.put("messages", msgList);
+                        if (!tools.isEmpty()) {
+                            reqDetails.put("tools",
+                                    tools.stream().map(ToolSpecification::name).collect(Collectors.toList()));
+                        }
+                        DebugTracer.record(DebugEvent.Type.MODEL_REQUEST, agentName, reqDetails);
+                    }
+
+                    if (!tools.isEmpty()) {
+                        requestBuilder.toolSpecifications(tools);
+                    }
+
+                    long modelStartTime = System.currentTimeMillis();
+                    response = model.chat(requestBuilder.build());
+                    long modelDuration = System.currentTimeMillis() - modelStartTime;
+
+                    if (DebugTracer.isEnabled()) {
+                        Map<String, Object> resDetails = new HashMap<>();
+                        resDetails.put("durationMs", modelDuration);
+                        resDetails.put("text", response.aiMessage().text());
+                        resDetails.put("hasToolCalls", response.aiMessage().hasToolExecutionRequests());
+                        DebugTracer.record(DebugEvent.Type.MODEL_RESPONSE, agentName, resDetails);
+                    }
+                } catch (Exception e) {
+                    throw new DslRuntimeException("ADSL-020",
+                            "Agent '" + instance.getName() + "' 模型调用失败: " + e.getMessage(), e);
                 }
-                log.info("[{}] 回复: {}", agentName, truncate(text, 100));
-                return text;
-            }
 
-            // 4. 执行工具调用
-            log.debug("[{}] 工具调用请求: {} 个", agentName,
-                    aiMessage.toolExecutionRequests().size());
+                AiMessage aiMessage = response.aiMessage();
 
-            for (ToolExecutionRequest toolRequest : aiMessage.toolExecutionRequests()) {
-                String toolName = toolRequest.name();
-                ToolExecutor executor = allToolExecutors.get(toolName);
+                // 保存 AI 消息到记忆
+                if (instance.getMemory() != null) {
+                    instance.getMemory().add(aiMessage);
+                }
+                messages.add(aiMessage);
 
-                if (executor == null) {
-                    log.warn("[{}] 未找到工具执行器: {}", agentName, toolName);
-                    String errorResult = "Error: Tool '" + toolName + "' not found";
+                // 3. 检查是否有工具调用
+                if (!aiMessage.hasToolExecutionRequests()) {
+                    // 没有工具调用，直接返回文本回复
+                    String text = aiMessage.text();
+                    // 某些模型（如 Gemini）在工具调用完成后可能返回 null text
+                    // 此时说明任务已完成，返回最后一条工具执行结果的摘要
+                    if (text == null || text.isBlank()) {
+                        // 从 messages 里找最后一条 ToolExecutionResultMessage 的内容作为回复
+                        String lastToolResult = findLastToolResult(messages);
+                        text = lastToolResult != null
+                                ? lastToolResult
+                                : "✅ 任务已完成（模型无额外回复）";
+                    }
+                    log.info("[{}] 回复: {}", agentName, truncate(text, 100));
+
+                    if (DebugTracer.isEnabled()) {
+                        DebugTracer.exit();
+                        DebugTracer.record(DebugEvent.Type.AGENT_END, agentName,
+                                Map.of("reply", text, "iterations", iteration + 1));
+                    }
+                    return text;
+                }
+
+                // 4. 执行工具调用
+                log.debug("[{}] 工具调用请求: {} 个", agentName,
+                        aiMessage.toolExecutionRequests().size());
+
+                for (ToolExecutionRequest toolRequest : aiMessage.toolExecutionRequests()) {
+                    String toolName = toolRequest.name();
+
+                    if (DebugTracer.isEnabled()) {
+                        Map<String, Object> toolReqDetails = new HashMap<>();
+                        toolReqDetails.put("toolName", toolName);
+                        toolReqDetails.put("arguments", toolRequest.arguments());
+                        DebugTracer.record(DebugEvent.Type.TOOL_CALL_REQUEST, agentName, toolReqDetails);
+                    }
+
+                    ToolExecutor executor = allToolExecutors.get(toolName);
+
+                    if (executor == null) {
+                        log.warn("[{}] 未找到工具执行器: {}", agentName, toolName);
+                        String errorResult = "Error: Tool '" + toolName + "' not found";
+
+                        if (DebugTracer.isEnabled()) {
+                            DebugTracer.record(DebugEvent.Type.TOOL_CALL_RESULT, agentName,
+                                    Map.of("toolName", toolName, "result", errorResult, "error", true));
+                        }
+
+                        ToolExecutionResultMessage resultMsg = ToolExecutionResultMessage.from(
+                                toolRequest, errorResult);
+                        messages.add(resultMsg);
+                        if (instance.getMemory() != null) {
+                            instance.getMemory().add(resultMsg);
+                        }
+                        continue;
+                    }
+
+                    long toolStartTime = System.currentTimeMillis();
+                    String result;
+                    try {
+                        result = executor.execute(toolRequest, agentName);
+                    } catch (Exception e) {
+                        result = "Error executing tool: " + e.getMessage();
+                        log.error("[{}] 工具 '{}' 执行异常: {}", agentName, toolName, e.getMessage());
+                    }
+                    long toolDuration = System.currentTimeMillis() - toolStartTime;
+
+                    if (DebugTracer.isEnabled()) {
+                        DebugTracer.record(DebugEvent.Type.TOOL_CALL_RESULT, agentName,
+                                Map.of("toolName", toolName, "result", result, "durationMs", toolDuration));
+                    }
+
+                    log.info("[{}] 工具 '{}' 执行完成: {}", agentName, toolName, truncate(result, 200));
+
                     ToolExecutionResultMessage resultMsg = ToolExecutionResultMessage.from(
-                            toolRequest, errorResult);
+                            toolRequest, result);
                     messages.add(resultMsg);
                     if (instance.getMemory() != null) {
                         instance.getMemory().add(resultMsg);
                     }
-                    continue;
                 }
 
-                String result = executor.execute(toolRequest, agentName);
-                log.info("[{}] 工具 '{}' 执行完成: {}", agentName, toolName, truncate(result, 200));
+                // 5. 所有工具执行完后，所有工具结果都已加入 messages
+                // 继续循环：再次调用模型，让模型基于工具结果生成最终回复
+                // （模型可能再次调用工具，或产生最终文本回复）
 
-                ToolExecutionResultMessage resultMsg = ToolExecutionResultMessage.from(
-                        toolRequest, result);
-                messages.add(resultMsg);
-                if (instance.getMemory() != null) {
-                    instance.getMemory().add(resultMsg);
-                }
             }
 
-            // 5. 所有工具执行完后，所有工具结果都已加入 messages
-            // 继续循环：再次调用模型，让模型基于工具结果生成最终回复
-            // （模型可能再次调用工具，或产生最终文本回复）
-
+            if (DebugTracer.isEnabled()) {
+                DebugTracer.exit();
+                DebugTracer.record(DebugEvent.Type.AGENT_END, agentName,
+                        Map.of("error", "Max tool iterations reached"));
+            }
+            throw new DslRuntimeException("ADSL-020",
+                    "Agent '" + instance.getName() + "' 工具调用循环超过最大次数: " + MAX_TOOL_ITERATIONS);
+        } catch (Exception e) {
+            if (DebugTracer.isEnabled()) {
+                DebugTracer.exit();
+                DebugTracer.record(DebugEvent.Type.AGENT_END, agentName, Map.of("error", e.getMessage()));
+            }
+            throw e;
         }
-
-        throw new DslRuntimeException("ADSL-020",
-                "Agent '" + instance.getName() + "' 工具调用循环超过最大次数: " + MAX_TOOL_ITERATIONS);
     }
 
     /**

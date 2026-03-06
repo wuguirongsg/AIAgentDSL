@@ -58,6 +58,9 @@ public class RunCommand implements Callable<Integer> {
     @Option(names = { "--trace" }, description = "输出工作流执行追踪（各步骤耗时）", defaultValue = "false")
     private boolean showTrace;
 
+    @Option(names = { "--debug", "-d" }, description = "输出详细的调试级别追踪信息（包括模型 I/O、工具调用）", defaultValue = "false")
+    private boolean debugModel;
+
     @Override
     public Integer call() {
         if (chatMessage == null && workflowName == null) {
@@ -77,36 +80,65 @@ public class RunCommand implements Callable<Integer> {
                 System.out.println();
             }
 
-            // 执行工作流
-            if (workflowName != null) {
-                String input = workflowInput != null ? workflowInput : "";
-                WorkflowResult result = engine.executeWorkflow(workflowName, input);
+            if (debugModel) {
+                com.agentdsl.core.metrics.DebugTracer.enable();
+            }
 
-                System.out.println(result.getFinalOutputAsString());
+            try {
+                // 执行工作流
+                if (workflowName != null) {
+                    String input = workflowInput != null ? workflowInput : "";
 
-                // 显示执行追踪（各步骤耗时）
-                if (showTrace) {
-                    printTrace(result.getExecutionTrace());
+                    if (debugModel) {
+                        com.agentdsl.core.metrics.DebugTracer.record(
+                                com.agentdsl.core.metrics.DebugEvent.Type.WORKFLOW_START, workflowName,
+                                java.util.Map.of("input", input), 0);
+                        com.agentdsl.core.metrics.DebugTracer.enter();
+                    }
+
+                    long wfStart = System.currentTimeMillis();
+                    WorkflowResult result = engine.executeWorkflow(workflowName, input);
+                    long wfDuration = System.currentTimeMillis() - wfStart;
+
+                    System.out.println(result.getFinalOutputAsString());
+
+                    if (debugModel) {
+                        com.agentdsl.core.metrics.DebugTracer.exit();
+                        com.agentdsl.core.metrics.DebugTracer.record(
+                                com.agentdsl.core.metrics.DebugEvent.Type.WORKFLOW_END, workflowName,
+                                java.util.Map.of("status", "completed", "durationMs", wfDuration), 0);
+                    }
+
+                    // 显示执行追踪（各步骤耗时）
+                    if (showTrace && !debugModel) {
+                        printTrace(result.getExecutionTrace());
+                    }
+                    return 0;
                 }
+
+                // 与 Agent 对话
+                String targetAgent = agentName;
+                if (targetAgent == null) {
+                    // 尝试从注册中心获取第一个 Agent
+                    var registry = engine.getRegistry();
+                    var agentNames = registry.getAgentNames();
+                    if (agentNames.isEmpty()) {
+                        System.err.println("❌ 脚本中未找到任何 Agent");
+                        return 1;
+                    }
+                    targetAgent = agentNames.iterator().next();
+                }
+
+                String reply = engine.chat(targetAgent, chatMessage);
+                System.out.println(reply);
                 return 0;
-            }
-
-            // 与 Agent 对话
-            String targetAgent = agentName;
-            if (targetAgent == null) {
-                // 尝试从注册中心获取第一个 Agent
-                var registry = engine.getRegistry();
-                var agentNames = registry.getAgentNames();
-                if (agentNames.isEmpty()) {
-                    System.err.println("❌ 脚本中未找到任何 Agent");
-                    return 1;
+            } finally {
+                if (debugModel) {
+                    DebugTraceRenderer.render(com.agentdsl.core.metrics.DebugTracer.getEvents());
+                    com.agentdsl.core.metrics.DebugTracer.clear();
+                    com.agentdsl.core.metrics.DebugTracer.disable();
                 }
-                targetAgent = agentNames.iterator().next();
             }
-
-            String reply = engine.chat(targetAgent, chatMessage);
-            System.out.println(reply);
-            return 0;
 
         } catch (Exception e) {
             System.err.println("❌ 执行失败: " + e.getMessage());
