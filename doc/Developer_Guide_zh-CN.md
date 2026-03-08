@@ -1,6 +1,6 @@
 # AgentDSL 开发者入门指南
 
-> **文档版本**: v1.0 · 适用 AgentDSL v1.2  
+> **文档版本**: v1.1 · 适用 AgentDSL v1.3.0  
 > **目标读者**: 初次使用 AgentDSL 的开发者
 
 ---
@@ -205,16 +205,23 @@ agent('name') {
 
 ### 4.1 使用内置工具
 
-AgentDSL 预置了 6 个常用工具，直接 `include` 即可：
+AgentDSL 预置了涵盖多种不同数据形态维度的 13 个基础工具，直接 `include` 即可：
 
-| 内置工具     | 功能             |
-| ------------ | ---------------- |
-| `http_get`   | 发送 GET 请求    |
-| `http_post`  | 发送 POST 请求   |
-| `json_parse` | 解析 JSON 字符串 |
-| `json_query` | JSONPath 查询    |
-| `file_read`  | 读取本地文件     |
-| `file_write` | 写入本地文件     |
+| 内置工具          | 功能                            |
+| ----------------- | ------------------------------- |
+| `http_get`        | 发送 GET 请求                   |
+| `http_post`       | 发送 POST 请求                  |
+| `json_parse`      | 解析 JSON 字符串                |
+| `json_query`      | JSONPath 查询                   |
+| `file_read`       | 读取本地文件                    |
+| `file_write`      | 写入本地文件                    |
+| `excel_read`      | 读取 Excel 文件 (v1.3)          |
+| `excel_write`     | 写入 Excel 文件 (v1.3)          |
+| `pdf_read`        | 读取 PDF 离线提取并识别 (v1.3)  |
+| `image_recognize` | 分析与识别图片 (v1.3)           |
+| `cmd_execute`     | 执行有黑名单和超时的本地 Shell  |
+| `db_query`        | 读取 JDBC 数据库 (v1.3)         |
+| `db_execute`      | JDBC 连接的 DDL/DML 操作 (v1.3) |
 
 ```groovy
 agent('my-agent') {
@@ -321,6 +328,52 @@ parameter {
     type 'string'
     description '邮箱'
     pattern '^[\\w+@\\w+\\.\\w+]+$'  // 正则校验
+}
+```
+
+### 4.5 集成数据库数据源 (v1.3)
+
+AgentDSL 支持在全局配置并安全挂载外部的 JDBC 数据库源：
+
+```groovy
+// 全局配置（顶层级别）
+datasource('my_h2') {
+    type 'h2'
+    url 'jdbc:h2:file:./data/mydb;DB_CLOSE_DELAY=-1'
+    username 'sa'
+    password ''
+}
+
+agent('data_assistant') {
+    model { provider 'gemini'; modelName 'gemini-2.5-flash' }
+    
+    // 明确告诉大模型它拥有的数据源名称
+    systemPrompt "你可以使用内置数据源 'my_h2' 进行数据库查询和更新。"
+    
+    tools {
+        include 'db_query'   // 引入查询工具
+        include 'db_execute' // 引入变更工具
+    }
+    
+    datasources {
+        attach 'my_h2'       // 为当前 Agent 挂载关联连接
+    }
+}
+```
+
+### 4.6 开启原生浏览器集成 (v1.3)
+
+不需要外部独立运行复杂的 MCP 服务器，只需在一行配置就能获得基于 Playwright 的强大浏览器控制套件：
+
+```groovy
+agent('web-crawler') {
+    model { provider 'gemini'; modelName 'gemini-2.5-pro' }
+    systemPrompt '你是一个网络信息搜集专家，请通过浏览器工具执行自动操作。'
+
+    browser_use {
+        sandbox false            // false: 真实显示浏览器界面（用于直观调试）
+        hitl_on "click", "fill"  // 触发点击或填充信息时开启人工批准环路
+    }
 }
 ```
 
@@ -740,8 +793,8 @@ agent('safe-agent') {
 # 运行脚本（工作流模式）
 ./bin/agentdsl.sh run <script> --workflow <workflow名> --input "输入"
 
-# 运行脚本（工作流 + 追踪耗时）
-./bin/agentdsl.sh run <script> --workflow <workflow名> --input "输入" --trace
+# 运行脚本（带调试功能，输出包含耗时、工具调用全链路追踪）
+./bin/agentdsl.sh run <script> --workflow <workflow名> --input "输入" --debug
 
 # 验证脚本语法
 ./bin/agentdsl.sh validate <script>
@@ -752,14 +805,14 @@ agent('safe-agent') {
 
 ### 10.2 参数详解
 
-| 参数         | 缩写 | 说明                          |
-| ------------ | ---- | ----------------------------- |
-| `--chat`     | `-c` | 向 Agent 发送的消息文本       |
-| `--agent`    | `-a` | 目标 Agent 名称（默认第一个） |
-| `--workflow` | `-w` | 要执行的 Workflow 名称        |
-| `--input`    | `-i` | Workflow 的初始输入文本       |
-| `--sandbox`  |      | 启用安全沙箱（默认 false）    |
-| `--trace`    |      | 显示 Workflow 各步骤耗时追踪  |
+| 参数         | 缩写 | 说明                                         |
+| ------------ | ---- | -------------------------------------------- |
+| `--chat`     | `-c` | 向 Agent 发送的消息文本                      |
+| `--agent`    | `-a` | 目标 Agent 名称（默认第一个）                |
+| `--workflow` | `-w` | 要执行的 Workflow 名称                       |
+| `--input`    | `-i` | Workflow 的初始输入文本                      |
+| `--sandbox`  |      | 启用安全沙箱（默认 false）                   |
+| `--debug`    |      | 开启调试追踪并显示详细执行流(替代旧版 trace) |
 
 ### 10.3 `--chat` vs `--workflow` 选择指南
 

@@ -1,6 +1,6 @@
 # AgentDSL 架构与扩展指南
 
-> **文档版本**: v1.0
+> **文档版本**: v1.1
 > **目标读者**: 核心开发者，贡献者，系统架构师
 
 ## 1. 系统架构概览
@@ -19,9 +19,9 @@ AgentDSL 被设计为一个模块化、可扩展且类型安全的 Java 应用 A
     *   *关键类*: `LangChainModelFactory`, `LangChainToolBridge`。
 *   **`agentdsl-mcp`**: 实现了模型上下文协议 (Model Context Protocol, MCP) 客户端。这是一个关键模块，允许 AgentDSL 将标准的 MCP Server 挂载为原生的本地工具。
     *   *关键类*: `McpClientFactory`, `McpToolProviderBridge`。
-*   **`agentdsl-tools`**: 一个内置的工具库（如 HTTP, 数据库, Excel, File IO 等）。它还提供了基于 `@AgentTool` 注解的机制，用于从用户代码中扫描本地方法作为工具。
+*   **`agentdsl-tools`**: 一个内置的通用和特定领域工具库（如 HTTP, 数据库(JDBC), Excel 读写, PDF/Image 识别, CLI 命令行, File IO 及原生的 Playwright 浏览器等）。它还提供了基于 `@AgentTool` 注解的机制，用于从用户代码中无缝扫描本地方法作为工具。
     *   *关键类*: `BuiltinToolRegistry`, `ToolScanner`。
-*   **`agentdsl-runtime`**: 执行引擎模块。主要管理 Agent 的生命周期，执行 ReAct 或自定义的循环调度，并管理记忆/状态。
+*   **`agentdsl-runtime`**: 执行引擎模块。主要管理 Agent 的生命周期，执行 ReAct 或自定义的循环调度，管理会话状态并提供支持 `--debug` 级别的全链路执行追踪 (Trace树结构)。
     *   *关键类*: `AgentExecutor`, `AgentRegistry`, `WorkflowExecutor`。
 *   **`agentdsl-cli`**: 命令行交互界面，用于无缝启动和测试脚本。
     *   *关键类*: `RunCommand`, `ListCommand`, `ValidateCommand`。
