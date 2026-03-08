@@ -6,6 +6,7 @@ import com.agentdsl.core.spec.AgentSpec;
 import com.agentdsl.core.spec.SkillSpec;
 import com.agentdsl.core.spec.ToolSpec;
 import com.agentdsl.core.spec.WorkflowSpec;
+import com.agentdsl.core.spec.DataSourceSpec;
 import groovy.lang.GroovyShell;
 import groovy.lang.Script;
 import org.codehaus.groovy.control.CompilerConfiguration;
@@ -89,13 +90,15 @@ public class DslCompiler {
                 List<ToolSpec> tools = dslScript.getStandaloneTools();
                 List<WorkflowSpec> workflows = dslScript.getWorkflows();
                 List<SkillSpec> skills = dslScript.getStandaloneSkills();
+                List<DataSourceSpec> datasources = dslScript.getDatasources();
 
                 // 校验
                 List<Diagnostic> diagnostics = DslValidator.validateAll(agents, tools, workflows, skills);
 
-                log.info("DSL 编译成功: {} agents, {} tools, {} workflows, {} skills, {} diagnostics",
-                        agents.size(), tools.size(), workflows.size(), skills.size(), diagnostics.size());
-                return new DslCompileResult(agents, tools, workflows, skills, diagnostics);
+                log.info("DSL 编译成功: {} agents, {} tools, {} workflows, {} skills, {} datasources, {} diagnostics",
+                        agents.size(), tools.size(), workflows.size(), skills.size(), datasources.size(),
+                        diagnostics.size());
+                return new DslCompileResult(agents, tools, workflows, skills, datasources, diagnostics);
             } else {
                 throw new DslCompilationException("ADSL-002",
                         "脚本未继承 DslBaseScript，请检查编译器配置");

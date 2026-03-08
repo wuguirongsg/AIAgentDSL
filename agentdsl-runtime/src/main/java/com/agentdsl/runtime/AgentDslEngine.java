@@ -6,6 +6,8 @@ import com.agentdsl.core.spec.AgentSpec;
 import com.agentdsl.core.spec.SkillSpec;
 import com.agentdsl.core.spec.ToolSpec;
 import com.agentdsl.core.spec.WorkflowSpec;
+import com.agentdsl.core.spec.DataSourceSpec;
+import com.agentdsl.core.spec.DataSourceRegistry;
 import com.agentdsl.tools.BuiltinToolRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -197,6 +199,15 @@ public class AgentDslEngine implements AutoCloseable {
         if (!skills.isEmpty()) {
             registry.registerSkills(skills);
             log.info("注册了 {} 个全局技能", skills.size());
+        }
+
+        // 注册 DataSources
+        List<DataSourceSpec> datasources = result.getDatasources();
+        for (DataSourceSpec ds : datasources) {
+            DataSourceRegistry.register(ds);
+        }
+        if (!datasources.isEmpty()) {
+            log.info("注册了 {} 个数据源", datasources.size());
         }
 
         // 再注册 Agent

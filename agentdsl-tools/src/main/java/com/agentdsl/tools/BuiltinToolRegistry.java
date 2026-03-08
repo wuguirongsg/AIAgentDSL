@@ -4,6 +4,11 @@ import com.agentdsl.core.spec.ToolSpec;
 import com.agentdsl.tools.builtin.FileTool;
 import com.agentdsl.tools.builtin.HttpTool;
 import com.agentdsl.tools.builtin.JsonTool;
+import com.agentdsl.tools.builtin.ExcelTool;
+import com.agentdsl.tools.builtin.PdfTool;
+import com.agentdsl.tools.builtin.ImageTool;
+import com.agentdsl.tools.builtin.CmdTool;
+import com.agentdsl.tools.builtin.DatabaseTool;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -29,6 +34,11 @@ public class BuiltinToolRegistry {
                     tools.addAll(ToolScanner.scan(new HttpTool()));
                     tools.addAll(ToolScanner.scan(new JsonTool()));
                     tools.addAll(ToolScanner.scan(new FileTool()));
+                    tools.addAll(ToolScanner.scan(new ExcelTool()));
+                    tools.addAll(ToolScanner.scan(new PdfTool()));
+                    tools.addAll(ToolScanner.scan(new ImageTool()));
+                    tools.addAll(ToolScanner.scan(new CmdTool()));
+                    tools.addAll(ToolScanner.scan(new DatabaseTool()));
                     cachedTools = Collections.unmodifiableList(tools);
                 }
             }
@@ -44,6 +54,11 @@ public class BuiltinToolRegistry {
         tools.addAll(ToolScanner.scan(new HttpTool()));
         tools.addAll(ToolScanner.scan(new JsonTool()));
         tools.addAll(ToolScanner.scan(new FileTool(fileAllowedDirectories)));
+        tools.addAll(ToolScanner.scan(new ExcelTool()));
+        tools.addAll(ToolScanner.scan(new PdfTool()));
+        tools.addAll(ToolScanner.scan(new ImageTool()));
+        tools.addAll(ToolScanner.scan(new CmdTool()));
+        tools.addAll(ToolScanner.scan(new DatabaseTool()));
         return Collections.unmodifiableList(tools);
     }
 }

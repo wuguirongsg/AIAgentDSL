@@ -30,6 +30,7 @@ tasks.shadowJar {
     manifest {
         attributes["Main-Class"] = "com.agentdsl.cli.AgentDslCli"
     }
+    mergeServiceFiles()
 }
 
 // 跳过根项目的 shadowJar 任务（仅 CLI 模块需要）

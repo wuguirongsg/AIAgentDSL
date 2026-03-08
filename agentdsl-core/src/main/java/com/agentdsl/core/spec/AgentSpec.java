@@ -18,6 +18,7 @@ public class AgentSpec {
     private List<String> toolRefs = new ArrayList<>();
     private List<String> skillRefs = new ArrayList<>();
     private List<SkillSpec> inlineSkills = new ArrayList<>();
+    private List<String> datasourceRefs = new ArrayList<>();
     private RagSpec rag;
     private GuardrailSpec guardrails;
     private OutputSchemaSpec outputSchema;
@@ -137,6 +138,14 @@ public class AgentSpec {
         this.inlineSkills = inlineSkills;
     }
 
+    public List<String> getDatasourceRefs() {
+        return datasourceRefs;
+    }
+
+    public void setDatasourceRefs(List<String> datasourceRefs) {
+        this.datasourceRefs = datasourceRefs;
+    }
+
     public BrowserUseSpec getBrowserUse() {
         return browserUse;
     }
@@ -158,6 +167,7 @@ public class AgentSpec {
                 ", memory=" + memory +
                 ", tools=" + tools.size() + " inline + " + toolRefs.size() + " refs" +
                 ", skills=" + skillRefs.size() + " refs + " + inlineSkills.size() + " inline" +
+                ", datasources=" + datasourceRefs.size() + " refs" +
                 ", mcp=" + mcp +
                 '}';
     }

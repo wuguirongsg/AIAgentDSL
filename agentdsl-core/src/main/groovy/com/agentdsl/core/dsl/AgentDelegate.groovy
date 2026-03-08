@@ -103,6 +103,16 @@ class AgentDelegate {
         config.call()
     }
 
+    /**
+     * datasources { use "db_name" }
+     */
+    void datasources(@DelegatesTo(DatasourcesBlockDelegate) Closure config) {
+        def delegate = new DatasourcesBlockDelegate(spec)
+        config.delegate = delegate
+        config.resolveStrategy = Closure.DELEGATE_FIRST
+        config.call()
+    }
+
     /** browser_use { server "@microsoft/playwright-mcp" } */
     void browser_use(@DelegatesTo(BrowserUseDelegate) Closure config) {
         def browserUseSpec = new BrowserUseSpec()

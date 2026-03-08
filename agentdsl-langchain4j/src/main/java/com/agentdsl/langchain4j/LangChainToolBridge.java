@@ -306,10 +306,13 @@ public class LangChainToolBridge {
             java.lang.reflect.Method method = toolSpec.getToolBeanMethod();
             Object bean = toolSpec.getToolBean();
             java.lang.reflect.Parameter[] methodParams = method.getParameters();
+            java.util.List<com.agentdsl.core.spec.ParameterSpec> specParams = toolSpec.getParameters();
 
             Object[] args = new Object[methodParams.length];
             for (int i = 0; i < methodParams.length; i++) {
-                String paramName = methodParams[i].getName();
+                String paramName = (specParams != null && i < specParams.size())
+                        ? specParams.get(i).getName()
+                        : methodParams[i].getName();
                 Object value = parsedParams.get(paramName);
                 args[i] = com.agentdsl.core.utils.ConvertUtils.convertArg(value, methodParams[i].getType());
             }

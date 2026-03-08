@@ -4,6 +4,7 @@ import com.agentdsl.core.spec.AgentSpec;
 import com.agentdsl.core.spec.SkillSpec;
 import com.agentdsl.core.spec.ToolSpec;
 import com.agentdsl.core.spec.WorkflowSpec;
+import com.agentdsl.core.spec.DataSourceSpec;
 
 import java.util.Collections;
 import java.util.List;
@@ -17,6 +18,7 @@ public class DslCompileResult {
     private final List<ToolSpec> tools;
     private final List<WorkflowSpec> workflows;
     private final List<SkillSpec> skills;
+    private final List<DataSourceSpec> datasources;
     private final List<Diagnostic> diagnostics;
 
     public DslCompileResult(List<AgentSpec> agents, List<ToolSpec> tools) {
@@ -29,15 +31,17 @@ public class DslCompileResult {
 
     public DslCompileResult(List<AgentSpec> agents, List<ToolSpec> tools,
             List<WorkflowSpec> workflows, List<SkillSpec> skills) {
-        this(agents, tools, workflows, skills, List.of());
+        this(agents, tools, workflows, skills, List.of(), List.of());
     }
 
     public DslCompileResult(List<AgentSpec> agents, List<ToolSpec> tools,
-            List<WorkflowSpec> workflows, List<SkillSpec> skills, List<Diagnostic> diagnostics) {
+            List<WorkflowSpec> workflows, List<SkillSpec> skills, List<DataSourceSpec> datasources,
+            List<Diagnostic> diagnostics) {
         this.agents = Collections.unmodifiableList(agents);
         this.tools = Collections.unmodifiableList(tools);
         this.workflows = Collections.unmodifiableList(workflows);
         this.skills = Collections.unmodifiableList(skills);
+        this.datasources = Collections.unmodifiableList(datasources);
         this.diagnostics = Collections.unmodifiableList(diagnostics);
     }
 
@@ -55,6 +59,10 @@ public class DslCompileResult {
 
     public List<SkillSpec> getSkills() {
         return skills;
+    }
+
+    public List<DataSourceSpec> getDatasources() {
+        return datasources;
     }
 
     public List<Diagnostic> getDiagnostics() {
@@ -87,6 +95,7 @@ public class DslCompileResult {
                 ", tools=" + tools.size() +
                 ", workflows=" + workflows.size() +
                 ", skills=" + skills.size() +
+                ", datasources=" + datasources.size() +
                 ", diagnostics=" + diagnostics.size() + '}';
     }
 }

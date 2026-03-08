@@ -22,6 +22,9 @@ abstract class DslBaseScript extends Script {
     /** 编译后收集到的所有独立 SkillSpec */
     List<SkillSpec> standaloneSkills = []
 
+    /** 编译后收集到的所有 DataSourceSpec */
+    List<DataSourceSpec> datasources = []
+
     /**
      * 顶层关键字：agent("name") { ... }
      */
@@ -69,6 +72,19 @@ abstract class DslBaseScript extends Script {
         config.resolveStrategy = Closure.DELEGATE_FIRST
         config.call()
         standaloneSkills << spec
+    }
+
+    /**
+     * 顶层关键字：datasource("name") { ... }
+     * 定义一个全局数据源，可被 Agent 通过 datasources { use "name" } 引用。
+     */
+    void datasource(String name, @DelegatesTo(DataSourceDelegate) Closure config) {
+        def spec = new DataSourceSpec(name)
+        def delegate = new DataSourceDelegate(spec)
+        config.delegate = delegate
+        config.resolveStrategy = Closure.DELEGATE_FIRST
+        config.call()
+        datasources << spec
     }
 
     /**
