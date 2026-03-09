@@ -75,8 +75,15 @@ public class DslCompiler {
      * 编译 DSL 脚本字符串。
      */
     public DslCompileResult compile(String scriptContent) {
+        return compile(scriptContent, "Script1.groovy");
+    }
+
+    /**
+     * 编译 DSL 脚本字符串，并指定脚本名称。
+     */
+    public DslCompileResult compile(String scriptContent, String scriptName) {
         try {
-            Script script = shell.parse(scriptContent);
+            Script script = shell.parse(scriptContent, scriptName);
 
             // 沙箱模式下：带超时保护执行脚本
             if (sandboxEnabled) {
@@ -103,11 +110,30 @@ public class DslCompiler {
                 throw new DslCompilationException("ADSL-002",
                         "脚本未继承 DslBaseScript，请检查编译器配置");
             }
-        } catch (DslCompilationException e) {
-            throw e;
         } catch (Exception e) {
+            String errorMsg = e.getMessage();
+            int lineNum = -1;
+
+            // 尝试从堆栈跟踪中提取特定脚本的行号
+            for (StackTraceElement element : e.getStackTrace()) {
+                if (scriptName.equals(element.getFileName())) {
+                    lineNum = element.getLineNumber();
+                    break;
+                }
+            }
+
+            String locationInfo = (lineNum > 0) ? " (在脚本 " + scriptName + " 第 " + lineNum + " 行)" : "";
+
+            if (e instanceof DslCompilationException dce) {
+                if (errorMsg != null && !errorMsg.contains("在脚本")) {
+                    throw new DslCompilationException(dce.getErrorCode(), dce.getMessage() + locationInfo,
+                            dce.getCause() != null ? dce.getCause() : e);
+                }
+                throw dce;
+            }
+
             throw new DslCompilationException("ADSL-002",
-                    "DSL 脚本编译失败: " + e.getMessage(), e);
+                    "DSL 脚本编译失败" + locationInfo + ": " + errorMsg, e);
         }
     }
 
@@ -118,7 +144,7 @@ public class DslCompiler {
         try {
             String content = Files.readString(scriptPath);
             log.info("编译 DSL 文件: {}", scriptPath);
-            return compile(content);
+            return compile(content, scriptPath.getFileName().toString());
         } catch (IOException e) {
             throw new DslCompilationException("ADSL-002",
                     "无法读取 DSL 文件: " + scriptPath, e);

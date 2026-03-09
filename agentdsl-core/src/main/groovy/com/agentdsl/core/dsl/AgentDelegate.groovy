@@ -103,14 +103,21 @@ class AgentDelegate {
         config.call()
     }
 
-    /**
-     * datasources { use "db_name" }
-     */
     void datasources(@DelegatesTo(DatasourcesBlockDelegate) Closure config) {
         def delegate = new DatasourcesBlockDelegate(spec)
         config.delegate = delegate
         config.resolveStrategy = Closure.DELEGATE_FIRST
         config.call()
+    }
+
+    /** search { provider "tavily"; apiKey env("XXX") } */
+    void search(@DelegatesTo(SearchDelegate) Closure config) {
+        def searchSpec = new SearchSpec()
+        def delegate = new SearchDelegate(searchSpec)
+        config.delegate = delegate
+        config.resolveStrategy = Closure.DELEGATE_FIRST
+        config.call()
+        spec.searchConfig = searchSpec
     }
 
     /** browser_use { server "@microsoft/playwright-mcp" } */

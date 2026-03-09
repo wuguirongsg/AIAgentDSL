@@ -1,11 +1,11 @@
 // 独立定义可复用工具
-tool("weatherQuery") {
-    description "查询指定城市的天气信息"
+tool('weatherQuery') {
+    description '查询指定城市的天气信息'
 
     parameter {
-        name "city"
-        type "string"
-        description "城市名称"
+        name 'city'
+        type 'string'
+        description '城市名称'
         required true
     }
 
@@ -15,8 +15,8 @@ tool("weatherQuery") {
     }
 }
 
-tool("getCurrentTime") {
-    description "获取当前系统时间"
+tool('getCurrentTime') {
+    description '获取当前系统时间'
 
     execute { ->
         return java.time.LocalDateTime.now().toString()
@@ -24,29 +24,29 @@ tool("getCurrentTime") {
 }
 
 // 使用工具的 Agent
-agent("weather-assistant") {
-    description "天气查询助手"
+agent('weather-assistant') {
+    description '天气查询助手'
 
     model {
-        provider "openai"
-        modelName "gpt-4"
+        provider 'qwen'
+        modelName 'qwen3.5-plus'
         temperature 0.3
     }
 
-    systemPrompt """
+    systemPrompt '''
         你是一个天气查询助手。
         当用户询问天气时，使用 weatherQuery 工具查询。
         当用户询问时间时，使用 getCurrentTime 工具查询。
-    """
+    '''
 
     memory {
-        type "message_window"
+        type 'message_window'
         maxMessages 10
     }
 
     tools {
-        include "weatherQuery"
-        include "getCurrentTime"
+        include 'weatherQuery'
+        include 'getCurrentTime'
     }
 
     guardrails {

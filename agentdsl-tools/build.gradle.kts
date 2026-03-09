@@ -9,6 +9,9 @@ dependencies {
     implementation("org.apache.pdfbox:pdfbox:3.0.2")
     implementation("com.h2database:h2:2.2.224")
 
+    // Web Search dependencies
+    implementation("dev.langchain4j:langchain4j-web-search-engine-tavily:0.36.2")
+
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }

@@ -9,6 +9,7 @@ import com.agentdsl.tools.builtin.PdfTool;
 import com.agentdsl.tools.builtin.ImageTool;
 import com.agentdsl.tools.builtin.CmdTool;
 import com.agentdsl.tools.builtin.DatabaseTool;
+import com.agentdsl.tools.builtin.WebSearchTool;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -39,6 +40,7 @@ public class BuiltinToolRegistry {
                     tools.addAll(ToolScanner.scan(new ImageTool()));
                     tools.addAll(ToolScanner.scan(new CmdTool()));
                     tools.addAll(ToolScanner.scan(new DatabaseTool()));
+                    tools.addAll(ToolScanner.scan(new WebSearchTool()));
                     cachedTools = Collections.unmodifiableList(tools);
                 }
             }
@@ -59,6 +61,7 @@ public class BuiltinToolRegistry {
         tools.addAll(ToolScanner.scan(new ImageTool()));
         tools.addAll(ToolScanner.scan(new CmdTool()));
         tools.addAll(ToolScanner.scan(new DatabaseTool()));
+        tools.addAll(ToolScanner.scan(new WebSearchTool()));
         return Collections.unmodifiableList(tools);
     }
 }

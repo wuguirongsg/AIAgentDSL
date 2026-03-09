@@ -24,6 +24,7 @@ public class AgentSpec {
     private OutputSchemaSpec outputSchema;
     private McpSpec mcp;
     private BrowserUseSpec browserUse;
+    private SearchSpec searchConfig;
 
     public AgentSpec() {
     }
@@ -154,6 +155,14 @@ public class AgentSpec {
         this.browserUse = browserUse;
     }
 
+    public SearchSpec getSearchConfig() {
+        return searchConfig;
+    }
+
+    public void setSearchConfig(SearchSpec searchConfig) {
+        this.searchConfig = searchConfig;
+    }
+
     @Override
     public String toString() {
         return "AgentSpec{" +
@@ -169,6 +178,7 @@ public class AgentSpec {
                 ", skills=" + skillRefs.size() + " refs + " + inlineSkills.size() + " inline" +
                 ", datasources=" + datasourceRefs.size() + " refs" +
                 ", mcp=" + mcp +
+                ", searchConfig=" + searchConfig +
                 '}';
     }
 }

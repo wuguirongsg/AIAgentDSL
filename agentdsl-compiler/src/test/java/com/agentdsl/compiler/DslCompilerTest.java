@@ -402,6 +402,31 @@ class DslCompilerTest {
         }
 
         @Test
+        @DisplayName("Search 配置解析")
+        void shouldParseSearchConfig() {
+            String dsl = """
+                        agent("search-agent") {
+                            model {
+                                provider "openai"
+                                modelName "gpt-4"
+                            }
+
+                            search {
+                                provider "zhipu"
+                                apiKey "test-api-key"
+                            }
+                        }
+                    """;
+
+            DslCompileResult result = compiler.compile(dsl);
+            AgentSpec agent = result.getFirstAgent();
+
+            assertNotNull(agent.getSearchConfig());
+            assertEquals("zhipu", agent.getSearchConfig().getProvider());
+            assertEquals("test-api-key", agent.getSearchConfig().getApiKey());
+        }
+
+        @Test
         @DisplayName("多个 Agent 定义在同一脚本")
         void shouldParseMultipleAgents() {
             String dsl = """
