@@ -14,8 +14,9 @@ While 90% of AI innovation happens in Python, Java developers (especially in Ent
 ### 🚀 Core Features
 1. **Model Context Protocol (MCP) First**: Seamlessly interact with the MCP ecosystem. If there's an MCP Server (like GitHub, Slack, Playwright), AgentDSL can directly mount and use it.
 2. **Deterministic Logic Skills**: Not just chatting. AgentDSL emphasizes "Logic Skills" alongside "Prompt Skills", ensuring complex business flows execute with 100% accuracy.
-3. **Enterprise-Grade Sandbox**: Built on Groovy with a secure sandbox runtime, preventing unauthorized system calls or environment variable access.
-4. **Rich Tool Ecosystem**: Native support for LangChain4j tools, Workflows, and upcoming features like Computer Use and Data extensions.
+3. **Enterprise-Grade Sandbox**: Secure runtime environment preventing unauthorized system calls or leaked environment variables.
+4. **Data & Automation Powerhouse (New v1.3)**: Built-in support for Excel, PDF, JDBC Databases, Real-time Web Search (Tavily/Serper/Zhipu), and Native Browser Automation (Playwright).
+5. **Observability & Trace**: Full-lifecycle debugging with the `--debug` flag for clear reasoning-action-observation traces.
 
 ### ⚡ 5-Minute Quick Start
 
@@ -39,8 +40,9 @@ export GEMINI_API_KEY="your-key-if-using-gemini"
 ```
 
 ### 📚 Documentation
-- [DSL Syntax Manual](doc/DSL_Syntax_Manual.md) - Complete reference for `agent`, `tool`, `workflow`, and `skill`.
-- [Architecture & Extension Guide](doc/Architecture_Guide.md) - How to extend `ModelProvider` or `SkillStore` via SPI.
+- [🚀 Developer Quick Start](doc/Developer_Guide_zh-CN.md) - Best place to start (CN version available).
+- [📖 Language Specification v1.3](doc/lang-spec/AgentDSL-Language-Spec-v1.3.md) - Formal grammar and syntax reference.
+- [🏗️ Architecture & Extension Guide](doc/Architecture_Guide.md) - Integrating custom models and logic.
 
 ### 🤝 Contributing
 Issues and Pull Requests are welcome! Before contributing, please read the [Contribution Guidelines (CONTRIBUTING.md)](CONTRIBUTING.md) and the [Changelog (CHANGELOG.md)](CHANGELOG.md).

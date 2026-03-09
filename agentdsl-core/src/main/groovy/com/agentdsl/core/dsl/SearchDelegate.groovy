@@ -18,4 +18,8 @@ class SearchDelegate {
         spec.apiKey = apiKey
     }
 
+    void maxResults(Integer maxResults) {
+        spec.maxResults = maxResults
+    }
+
 }

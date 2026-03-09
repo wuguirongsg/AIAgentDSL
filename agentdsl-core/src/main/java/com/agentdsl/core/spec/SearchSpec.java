@@ -3,6 +3,7 @@ package com.agentdsl.core.spec;
 public class SearchSpec {
     private String provider;
     private String apiKey;
+    private Integer maxResults;
 
     public String getProvider() {
         return provider;
@@ -18,6 +19,14 @@ public class SearchSpec {
 
     public void setApiKey(String apiKey) {
         this.apiKey = apiKey;
+    }
+
+    public Integer getMaxResults() {
+        return maxResults;
+    }
+
+    public void setMaxResults(Integer maxResults) {
+        this.maxResults = maxResults;
     }
 
     @Override

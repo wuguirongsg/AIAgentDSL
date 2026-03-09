@@ -21,9 +21,10 @@
 > [!NOTE]
 > v1.3.0 相对 v1.2 的主要变更：
 > - **数据基础设施**：顶层增加 `datasource` 定义，Agent 内增加 `datasources` 引用，支持跨生态的 JDBC 数据库访问。
-> - **内置数据工具扩充**：新增 `excel_read`, `excel_write`, `pdf_read`, `image_recognize`, `cmd_execute`, `db_query`, `db_execute` 内置能力。
-> - **原生浏览器集成**：新增 `browser_use` 关键字，在不配置冗长 MCP 的情况下通过 Playwright 直接驱动浏览器智能操作套件。
-> - **调试追踪系统**：CLI 层面完全支持 `--debug` 全链路追踪输出（通过 AgentDSL Trace 树展现推理、执行闭环）。
+- **内置工具集扩充**：新增 `excel_read`, `excel_write`, `pdf_read`, `image_recognize`, `cmd_execute`, `db_query`, `db_execute`, `web_search` 内置能力。
+- **原生浏览器集成**：新增 `browser_use` 关键字，直接驱动浏览器操作。
+- **增强搜索能力**：新增 `search` 配置块，支持 `tavily`, `serper`, `zhipu` 等主流搜索 Provider。
+- **调试追踪系统**：CLI 支持 `--debug` 全链路追踪输出。
 
 ---
 
@@ -82,6 +83,7 @@ AgentDSL 的关键字分为以下层级：
 | `mcp`          | MCP 服务配置块(v1.2)   | `Block`  | 否     |
 | `browser_use`  | 原生浏览器块配置(v1.3) | `Block`  | 否     |
 | `datasources`  | 数据源引用配置(v1.3)   | `Block`  | 否     |
+| `search`       | 搜索引擎全局配置(v1.3) | `Block`  | 否     |
 | `rag`          | RAG 检索增强配置块     | `Block`  | 否     |
 | `guardrails`   | 安全护栏配置块         | `Block`  | 否     |
 | `outputSchema` | 结构化输出定义块       | `Block`  | 否     |
@@ -123,7 +125,7 @@ AgentDSL 的关键字分为以下层级：
 | `include` | 引用已注册的工具 或 内置工具 | `include "toolName"`   |
 | `tool`    | 内联定义一个工具             | `tool("name") { ... }` |
 
-> v1.3.0 系统内置工具预注册名已扩充覆盖全系能力：`http_get`, `http_post`, `json_parse`, `json_query`, `file_read`, `file_write`, `excel_read`, `excel_write`, `pdf_read`, `image_recognize`, `cmd_execute`, `db_query`, `db_execute`。均可直接使用 `include` 引入。
+> v1.3.0 系统内置工具预注册名已扩充覆盖全系能力：`http_get`, `http_post`, `json_parse`, `json_query`, `file_read`, `file_write`, `excel_read`, `excel_write`, `pdf_read`, `image_recognize`, `cmd_execute`, `db_query`, `db_execute`, `web_search`。均可直接使用 `include` 引入。
 
 #### Tool 定义关键字（`tool { }` 内部，v1.2增强）
 
@@ -212,6 +214,17 @@ AgentDSL 的关键字分为以下层级：
 | `username`       | 用户名                    | `String`  | 否          |
 | `password`       | 密码                      | `String`  | 否          |
 | `maxConnections` | 最大连接数                | `Integer` | 否 (默认10) |
+
+#### Search 块关键字 (v1.3 新增)
+
+`search { }` 用于配置 Agent 使用的底层搜索引擎。
+
+| 关键字       | 描述                                  | 类型      | 必填   |
+| ------------ | ------------------------------------- | --------- | ------ |
+| `provider`   | 搜索提供商 (如 tavily, serper, zhipu) | `String`  | **是** |
+| `apiKey`     | API 密钥                              | `String`  | **是** |
+| `maxResults` | 返回的最大结果数 (由底层支持)         | `Integer` | 否     |
+
 
 #### RAG 块关键字
 
@@ -380,6 +393,11 @@ datasourcesBlock ::= "datasources" "{" { "attach" STRING } "}" ;
 (* === BrowserUse 块 (v1.3) === *)
 browserUseBlock  ::= "browser_use" "{" { browserUseProp } "}" ;
 browserUseProp   ::= "sandbox" BOOLEAN | "hitl_on" STRING { "," STRING } ;
+
+(* === Search 块 (v1.3) === *)
+searchBlock      ::= "search" "{" { searchProp } "}" ;
+searchProp       ::= "provider" STRING | "apiKey" ( STRING | envRef ) | "maxResults" INTEGER ;
+
 
 (* === RAG 块 === *)
 ragBlock        ::= "rag" "{" retrieverDecl "}" ;
