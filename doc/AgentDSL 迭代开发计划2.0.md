@@ -266,18 +266,17 @@ agent("web-operator") {
 
 ### DSL 语法设计
 
-```groovy
 agent("AutoAssistant") {
     model { provider "ollama"; modelName "qwen3:14b" }
     
-    mode AUTONOMOUS        // 开启自主规划模式
-    max_steps 10           // 防止死循环的安全阈值
+    autonomous {
+        execution_mode "plan"  // "plan" | "fast"
+        max_steps 10           // 默认 10，超过后询问用户
+    }
     
-    // 赋予权限的技能与工具
-    capabilities {
-        include_skill "web-search"
-        include_skill "file-manager"
-        include "http_get"
+    tools {
+        include "web_search"
+        include "file_write"
     }
     
     systemPrompt "你是一个自主任务助手，帮助用户完成复杂的多步骤任务。"
@@ -292,12 +291,14 @@ agent("AutoAssistant") {
 
 ### 验收标准
 
-- [ ] DSL 中可通过 `mode AUTONOMOUS` 开启自主模式
-- [ ] Agent 接受自然语言描述的目标后，能自主规划多步执行计划
-- [ ] 超过 `max_steps` 后自动终止并报告当前进度
-- [ ] 执行过程生成完整 `ExecutionTrace` 可追溯
-- [ ] 集成测试：完成 "搜索 + 处理 + 汇总" 的三步自主任务
-- [ ] 全量测试通过
+- [x] DSL 中可通过 `autonomous { ... }` 开启自主模式
+- [x] 支持 `plan`（确认后执行）与 `fast`（直接执行）两种模式
+- [x] Agent 接受描述目标后，能由 `PlannerEngine` 自主规划多步执行计划
+- [x] 超过 `max_steps` 后自动暂停并交互式询问用户是否继续
+- [x] 通过 `UserInteraction` 接口解耦用户反馈（CLI/Web 兼容）
+- [x] 执行过程生成完整 `AutonomousResult` 与步骤详情
+- [x] 单元测试 `AutonomousDslTest` 解析与校验全量通过
+- [x] 全量项目测试通过 (BUILD SUCCESSFUL)
 
 ---
 

@@ -120,6 +120,16 @@ class AgentDelegate {
         spec.searchConfig = searchSpec
     }
 
+    /** autonomous { execution_mode "plan"; max_steps 10 } */
+    void autonomous(@DelegatesTo(AutonomousDelegate) Closure config) {
+        def autonomousSpec = new AutonomousSpec()
+        def delegate = new AutonomousDelegate(autonomousSpec)
+        config.delegate = delegate
+        config.resolveStrategy = Closure.DELEGATE_FIRST
+        config.call()
+        spec.autonomous = autonomousSpec
+    }
+
     /** browser_use { server "@microsoft/playwright-mcp" } */
     void browser_use(@DelegatesTo(BrowserUseDelegate) Closure config) {
         def browserUseSpec = new BrowserUseSpec()

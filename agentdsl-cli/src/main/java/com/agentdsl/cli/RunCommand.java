@@ -4,6 +4,7 @@ import com.agentdsl.compiler.Diagnostic;
 import com.agentdsl.compiler.DslCompileResult;
 import com.agentdsl.runtime.AgentDslEngine;
 import com.agentdsl.runtime.WorkflowResult;
+import com.agentdsl.runtime.autonomous.AutonomousResult;
 import com.agentdsl.runtime.metrics.ExecutionTrace;
 import com.agentdsl.runtime.metrics.StepTrace;
 import picocli.CommandLine.Command;
@@ -32,6 +33,9 @@ import java.util.concurrent.Callable;
  *
  *   # 显示执行追踪（耗时详情）
  *   agentdsl run examples/workflow.agent.groovy --workflow my-flow --input "test" --trace
+ *
+ *   # 以自主模式执行 Agent
+ *   agentdsl run examples/autonomous-agent.agent.groovy --autonomous "帮我搜索最新的 AI 新闻"
  * </pre>
  */
 @Command(name = "run", description = "加载并执行 DSL 脚本（Agent 对话或工作流）", mixinStandardHelpOptions = true)
@@ -61,10 +65,13 @@ public class RunCommand implements Callable<Integer> {
     @Option(names = { "--debug", "-d" }, description = "输出详细的调试级别追踪信息（包括模型 I/O、工具调用）", defaultValue = "false")
     private boolean debugModel;
 
+    @Option(names = { "--autonomous", "--auto" }, description = "以自主模式执行，指定任务目标描述")
+    private String autonomousGoal;
+
     @Override
     public Integer call() {
-        if (chatMessage == null && workflowName == null) {
-            System.err.println("❌ 请指定 --chat <消息> 或 --workflow <名称> --input <输入>");
+        if (chatMessage == null && workflowName == null && autonomousGoal == null) {
+            System.err.println("❌ 请指定 --chat <消息> 或 --workflow <名称> --input <输入> 或 --autonomous <目标>");
             return 1;
         }
 
@@ -116,18 +123,28 @@ public class RunCommand implements Callable<Integer> {
                     return 0;
                 }
 
-                // 与 Agent 对话
-                String targetAgent = agentName;
-                if (targetAgent == null) {
-                    // 尝试从注册中心获取第一个 Agent
-                    var registry = engine.getRegistry();
-                    var agentNames = registry.getAgentNames();
-                    if (agentNames.isEmpty()) {
-                        System.err.println("❌ 脚本中未找到任何 Agent");
+                // 自主模式执行
+                if (autonomousGoal != null) {
+                    String targetAgent = resolveTargetAgent(engine);
+                    if (targetAgent == null)
                         return 1;
-                    }
-                    targetAgent = agentNames.iterator().next();
+
+                    long autoStart = System.currentTimeMillis();
+                    AutonomousResult autoResult = engine.executeAutonomous(targetAgent, autonomousGoal);
+                    long autoDuration = System.currentTimeMillis() - autoStart;
+
+                    System.out.println("\n" + "═".repeat(60));
+                    System.out.println(autoResult.getFinalAnswer());
+                    System.out.println("═".repeat(60));
+                    System.out.printf("📊 执行了 %d 步，耗时 %dms，%s%n",
+                            autoResult.getTotalSteps(), autoDuration,
+                            autoResult.isCompleted() ? "✅ 目标已完成" : "⚠️ " + autoResult.getTerminationReason());
+                    return 0;
                 }
+
+                String targetAgent = resolveTargetAgent(engine);
+                if (targetAgent == null)
+                    return 1;
 
                 String reply = engine.chat(targetAgent, chatMessage);
                 System.out.println(reply);
@@ -164,5 +181,21 @@ public class RunCommand implements Callable<Integer> {
             System.out.printf("   %-25s %-10s %dms%n",
                     step.getStepName(), "[" + step.getStatus() + "]", step.getDurationMs());
         }
+    }
+
+    /**
+     * 解析目标 Agent 名称。
+     * 优先使用 --agent 参数，否则取脚本中第一个 Agent。
+     */
+    private String resolveTargetAgent(AgentDslEngine engine) {
+        if (agentName != null)
+            return agentName;
+        var registry = engine.getRegistry();
+        var agentNames = registry.getAgentNames();
+        if (agentNames.isEmpty()) {
+            System.err.println("❌ 脚本中未找到任何 Agent");
+            return null;
+        }
+        return agentNames.iterator().next();
     }
 }

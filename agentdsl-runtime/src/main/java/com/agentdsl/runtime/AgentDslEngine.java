@@ -8,6 +8,11 @@ import com.agentdsl.core.spec.ToolSpec;
 import com.agentdsl.core.spec.WorkflowSpec;
 import com.agentdsl.core.spec.DataSourceSpec;
 import com.agentdsl.core.spec.DataSourceRegistry;
+import com.agentdsl.core.exception.DslRuntimeException;
+import com.agentdsl.runtime.autonomous.AutonomousExecutor;
+import com.agentdsl.runtime.autonomous.AutonomousResult;
+import com.agentdsl.runtime.autonomous.ConsoleUserInteraction;
+import com.agentdsl.runtime.autonomous.UserInteraction;
 import com.agentdsl.tools.BuiltinToolRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,6 +39,7 @@ public class AgentDslEngine implements AutoCloseable {
     private final AgentRegistry registry;
     private final AgentExecutor executor;
     private final WorkflowExecutor workflowExecutor;
+    private AutonomousExecutor autonomousExecutor;
     private HotReloader hotReloader;
 
     public AgentDslEngine() {
@@ -48,6 +54,7 @@ public class AgentDslEngine implements AutoCloseable {
         this.registry = new AgentRegistry();
         this.executor = new AgentExecutor(registry);
         this.workflowExecutor = new WorkflowExecutor(executor, registry);
+        this.autonomousExecutor = new AutonomousExecutor(new ConsoleUserInteraction());
         registerBuiltinTools();
     }
 
@@ -113,6 +120,29 @@ public class AgentDslEngine implements AutoCloseable {
      */
     public String chat(String agentName, String userMessage) {
         return executor.chat(agentName, userMessage);
+    }
+
+    /**
+     * 以自主模式执行 Agent 任务。
+     *
+     * @param agentName Agent 名称
+     * @param userGoal  用户目标描述
+     * @return 自主执行结果
+     */
+    public AutonomousResult executeAutonomous(String agentName, String userGoal) {
+        AgentInstance instance = registry.get(agentName);
+        if (!instance.getSpec().isAutonomous()) {
+            throw new DslRuntimeException("ADSL-030",
+                    "Agent '" + agentName + "' 未配置 autonomous 模式");
+        }
+        return autonomousExecutor.execute(instance, userGoal);
+    }
+
+    /**
+     * 设置自定义的用户交互实现（用于测试或 Web 场景）。
+     */
+    public void setUserInteraction(UserInteraction userInteraction) {
+        this.autonomousExecutor = new AutonomousExecutor(userInteraction);
     }
 
     /**

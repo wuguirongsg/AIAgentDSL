@@ -25,6 +25,7 @@ public class AgentSpec {
     private McpSpec mcp;
     private BrowserUseSpec browserUse;
     private SearchSpec searchConfig;
+    private AutonomousSpec autonomous;
 
     public AgentSpec() {
     }
@@ -163,6 +164,18 @@ public class AgentSpec {
         this.searchConfig = searchConfig;
     }
 
+    public AutonomousSpec getAutonomous() {
+        return autonomous;
+    }
+
+    public void setAutonomous(AutonomousSpec autonomous) {
+        this.autonomous = autonomous;
+    }
+
+    public boolean isAutonomous() {
+        return autonomous != null;
+    }
+
     @Override
     public String toString() {
         return "AgentSpec{" +
@@ -179,6 +192,7 @@ public class AgentSpec {
                 ", datasources=" + datasourceRefs.size() + " refs" +
                 ", mcp=" + mcp +
                 ", searchConfig=" + searchConfig +
+                ", autonomous=" + autonomous +
                 '}';
     }
 }

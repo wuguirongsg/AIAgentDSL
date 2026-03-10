@@ -2,6 +2,7 @@ package com.agentdsl.compiler;
 
 import com.agentdsl.core.exception.DslCompilationException;
 import com.agentdsl.core.spec.AgentSpec;
+import com.agentdsl.core.spec.AutonomousSpec;
 import com.agentdsl.core.spec.ParameterSpec;
 import com.agentdsl.core.spec.SkillSpec;
 import com.agentdsl.core.spec.StepSpec;
@@ -25,6 +26,9 @@ public class DslValidator {
     private static final Set<String> VALID_RETURN_TYPES = Set.of(
             "string", "json", "object", "number", "boolean", "array");
 
+    /** 合法的 autonomous execution_mode 值 */
+    private static final Set<String> VALID_EXECUTION_MODES = Set.of("plan", "fast");
+
     private DslValidator() {
     }
 
@@ -38,7 +42,7 @@ public class DslValidator {
         List<Diagnostic> diagnostics = new ArrayList<>();
 
         for (AgentSpec agent : agents) {
-            validateAgent(agent);
+            validateAgent(agent, diagnostics);
         }
         for (ToolSpec tool : tools) {
             validateTool(tool, diagnostics);
@@ -71,11 +75,16 @@ public class DslValidator {
         return validateAll(agents, tools, workflows, List.of());
     }
 
+    public static void validateAgent(AgentSpec agent) {
+        validateAgent(agent, new ArrayList<>());
+    }
+
     /**
      * 校验 Agent 定义。
      * 必填项：name, model.provider, model.modelName
+     * 可选校验：autonomous 配置
      */
-    public static void validateAgent(AgentSpec agent) {
+    public static void validateAgent(AgentSpec agent, List<Diagnostic> diagnostics) {
         if (agent.getName() == null || agent.getName().isBlank()) {
             throw new DslCompilationException("ADSL-001",
                     "Agent 缺少必填项: name");
@@ -91,6 +100,46 @@ public class DslValidator {
         if (agent.getModel().getModelName() == null || agent.getModel().getModelName().isBlank()) {
             throw new DslCompilationException("ADSL-001",
                     "Agent '" + agent.getName() + "' 的 model 缺少必填项: modelName");
+        }
+        // Autonomous 配置校验
+        if (agent.isAutonomous()) {
+            validateAutonomous(agent, diagnostics);
+        }
+    }
+
+    /**
+     * 校验 Autonomous 配置。
+     * - execution_mode 必须是 "plan" 或 "fast"
+     * - max_steps 必须 > 0
+     * - 自主 Agent 建议配置 tools 或 skills（软性警告）
+     */
+    private static void validateAutonomous(AgentSpec agent, List<Diagnostic> diagnostics) {
+        AutonomousSpec autonomous = agent.getAutonomous();
+        String name = agent.getName();
+
+        if (autonomous.getExecutionMode() == null
+                || !VALID_EXECUTION_MODES.contains(autonomous.getExecutionMode().toLowerCase())) {
+            throw new DslCompilationException("ADSL-001",
+                    "Agent '" + name + "' 的 autonomous.execution_mode 必须是 'plan' 或 'fast'，"
+                            + "当前值: '" + autonomous.getExecutionMode() + "'");
+        }
+
+        if (autonomous.getMaxSteps() <= 0) {
+            throw new DslCompilationException("ADSL-001",
+                    "Agent '" + name + "' 的 autonomous.max_steps 必须大于 0，"
+                            + "当前值: " + autonomous.getMaxSteps());
+        }
+
+        // 软性警告：自主 Agent 没有配置任何工具或技能
+        boolean hasTools = (agent.getTools() != null && !agent.getTools().isEmpty())
+                || (agent.getToolRefs() != null && !agent.getToolRefs().isEmpty());
+        boolean hasSkills = (agent.getSkillRefs() != null && !agent.getSkillRefs().isEmpty())
+                || (agent.getInlineSkills() != null && !agent.getInlineSkills().isEmpty());
+        if (!hasTools && !hasSkills) {
+            diagnostics.add(new Diagnostic(Diagnostic.Severity.WARNING,
+                    "自主 Agent '" + name + "' 未配置任何 tools 或 skills，"
+                            + "自主模式下通常需要工具来完成多步骤任务。",
+                    "Agent: " + name));
         }
     }
 
