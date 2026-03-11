@@ -409,6 +409,107 @@ public class AgentRegistry {
         log.info("注册中心已清空");
     }
 
+    // --- 直接执行方法（供 WorkflowExecutor 的非 Agent 步骤使用）---
+
+    /**
+     * 直接执行已注册的工具（绕过 LLM）。
+     *
+     * @param toolName 工具名称
+     * @param params   工具参数
+     * @return 执行结果字符串
+     */
+    public String executeToolDirectly(String toolName, Map<String, Object> params) {
+        ToolSpec tool = globalTools.get(toolName);
+        if (tool == null) {
+            throw new DslRuntimeException("ADSL-040",
+                    "直接调用工具失败：工具 '" + toolName + "' 未注册。已注册工具: " + globalTools.keySet());
+        }
+        try {
+            if (tool.isBeanMethod()) {
+                java.lang.reflect.Method method = tool.getToolBeanMethod();
+                Object bean = tool.getToolBean();
+                java.lang.reflect.Parameter[] methodParams = method.getParameters();
+                List<com.agentdsl.core.spec.ParameterSpec> paramSpecs = tool.getParameters();
+
+                Object[] args = new Object[methodParams.length];
+                for (int i = 0; i < methodParams.length; i++) {
+                    String paramName = (paramSpecs != null && i < paramSpecs.size())
+                            ? paramSpecs.get(i).getName()
+                            : methodParams[i].getName();
+                    Object val = params.get(paramName);
+                    args[i] = com.agentdsl.core.utils.ConvertUtils.convertArg(val, methodParams[i].getType());
+                }
+                Object result = method.invoke(bean, args);
+                return result != null ? result.toString() : "null";
+            }
+            Object body = tool.getExecuteBody();
+            if (body instanceof groovy.lang.Closure<?> closure) {
+                Object result = closure.getMaximumNumberOfParameters() == 0
+                        ? closure.call()
+                        : closure.call(params);
+                return result != null ? result.toString() : "null";
+            }
+            throw new DslRuntimeException("ADSL-040",
+                    "工具 '" + toolName + "' 没有可执行逻辑。");
+        } catch (DslRuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("直接调用工具 '{}' 执行失败", toolName, e);
+            throw new DslRuntimeException("ADSL-040",
+                    "直接调用工具 '" + toolName + "' 执行失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 直接执行已注册的 Skill（绕过 LLM）。
+     *
+     * @param skillName Skill 名称
+     * @param params    Skill 参数
+     * @return 执行结果字符串
+     */
+    public String executeSkillDirectly(String skillName, Map<String, Object> params) {
+        SkillSpec skill = globalSkills.get(skillName);
+        if (skill == null) {
+            throw new DslRuntimeException("ADSL-040",
+                    "直接调用 Skill 失败：Skill '" + skillName + "' 未注册。已注册 Skill: " + globalSkills.keySet());
+        }
+        try {
+            if (skill.isLogicSkill()) {
+                Object body = skill.getExecuteBody();
+                if (body instanceof groovy.lang.Closure<?> closure) {
+                    Object result = closure.getMaximumNumberOfParameters() == 0
+                            ? closure.call()
+                            : closure.call(params);
+                    return result != null ? result.toString() : "null";
+                }
+                throw new DslRuntimeException("ADSL-040",
+                        "Logic Skill '" + skillName + "' 没有可执行逻辑。");
+            } else {
+                // Prompt Skill: 直接返回 instruction 与参数拼接的结果
+                StringBuilder prompt = new StringBuilder(
+                        skill.getInstruction() != null ? skill.getInstruction() : "");
+                if (params != null && !params.isEmpty()) {
+                    prompt.append("\n\n输入参数:\n");
+                    params.forEach((k, v) -> prompt.append("- ").append(k).append(": ").append(v).append("\n"));
+                }
+                return prompt.toString();
+            }
+        } catch (DslRuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("直接调用 Skill '{}' 执行失败", skillName, e);
+            throw new DslRuntimeException("ADSL-040",
+                    "直接调用 Skill '" + skillName + "' 执行失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 获取工具调度解析器（供 WorkflowExecutor 注入到 WorkflowExecutionContext）。
+     */
+    public java.util.function.BiFunction<String, Map<String, Object>, String> getToolCallResolver() {
+        return this::executeToolDirectly;
+    }
+
     /**
      * 将 SkillSpec 展平为 ToolSpec。
      * <ul>

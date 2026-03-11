@@ -246,6 +246,7 @@ public class DslValidator {
     /**
      * 校验 Workflow 定义。
      * 必填项：name, steps（至少 1 个 step）
+     * 每个 step 的执行模式必须互斥。
      */
     public static void validateWorkflow(WorkflowSpec workflow) {
         if (workflow.getName() == null || workflow.getName().isBlank()) {
@@ -255,6 +256,59 @@ public class DslValidator {
         if (workflow.getSteps() == null || workflow.getSteps().isEmpty()) {
             throw new DslCompilationException("ADSL-001",
                     "Workflow '" + workflow.getName() + "' 缺少必填项: steps（至少需要 1 个步骤）");
+        }
+        for (StepSpec step : workflow.getSteps()) {
+            validateStepExecutionMode(workflow.getName(), step);
+        }
+    }
+
+    /**
+     * 递归校验步骤执行模式互斥性。
+     * SEQUENTIAL 步骤必须且只能指定一种执行模式：agent / execute / tool / skill / mcp。
+     */
+    private static void validateStepExecutionMode(String workflowName, StepSpec step) {
+        if (step.getType() == StepSpec.StepType.SEQUENTIAL) {
+            int modeCount = 0;
+            List<String> modes = new ArrayList<>();
+            if (step.getAgentRef() != null) { modeCount++; modes.add("agent"); }
+            if (step.getExecuteClosure() != null) { modeCount++; modes.add("execute"); }
+            if (step.getToolRef() != null) { modeCount++; modes.add("tool"); }
+            if (step.getSkillRef() != null) { modeCount++; modes.add("skill"); }
+            if (step.getMcpServerRef() != null) { modeCount++; modes.add("mcp"); }
+
+            if (modeCount == 0) {
+                throw new DslCompilationException("ADSL-004",
+                        "Workflow '" + workflowName + "' 的步骤 '" + step.getName()
+                                + "' 未指定执行模式，必须使用 agent/execute/tool/skill/mcp 之一");
+            }
+            if (modeCount > 1) {
+                throw new DslCompilationException("ADSL-004",
+                        "Workflow '" + workflowName + "' 的步骤 '" + step.getName()
+                                + "' 指定了多个执行模式 " + modes + "，这些模式互斥，只能选择一个");
+            }
+            if (step.getMcpServerRef() != null && (step.getMcpToolRef() == null || step.getMcpToolRef().isBlank())) {
+                throw new DslCompilationException("ADSL-004",
+                        "Workflow '" + workflowName + "' 的步骤 '" + step.getName()
+                                + "' 使用了 mcp 模式但未指定工具名称");
+            }
+        }
+        // 递归校验子步骤
+        if (step.getParallelSteps() != null) {
+            for (StepSpec sub : step.getParallelSteps()) {
+                validateStepExecutionMode(workflowName, sub);
+            }
+        }
+        if (step.getBranches() != null) {
+            step.getBranches().values().forEach(branchSteps -> {
+                for (StepSpec sub : branchSteps) {
+                    validateStepExecutionMode(workflowName, sub);
+                }
+            });
+        }
+        if (step.getLoopBody() != null) {
+            for (StepSpec sub : step.getLoopBody()) {
+                validateStepExecutionMode(workflowName, sub);
+            }
         }
     }
 
@@ -380,11 +434,13 @@ public class DslValidator {
 
     /**
      * 递归校验单个步骤的 Agent 引用。
+     * 只有 agent 模式的步骤才需要校验 Agent 引用，直接执行模式的步骤跳过。
      */
     private static void validateStepAgentRef(
             String workflowName, StepSpec step, Set<String> definedAgentNames) {
-        // 顺序步骤：检查 agentRef
-        if (step.getAgentRef() != null && !step.getAgentRef().isBlank()) {
+        // 只有 agent 模式的步骤才校验 agentRef（execute/tool/skill/mcp 步骤跳过）
+        if (step.getAgentRef() != null && !step.getAgentRef().isBlank()
+                && !step.isDirectExecution()) {
             if (!definedAgentNames.contains(step.getAgentRef())) {
                 throw new DslCompilationException("ADSL-003",
                         "Workflow '" + workflowName + "' 的步骤 '" + step.getName()

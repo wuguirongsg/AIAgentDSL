@@ -38,8 +38,18 @@ public class StepSpec {
     private String name;
 
     // --- SEQUENTIAL 字段 ---
-    /** 引用的 Agent 名称 */
+    /** 引用的 Agent 名称（认知节点，与 executeClosure/toolRef/skillRef/mcpServerRef 互斥） */
     private String agentRef;
+    /** 纯代码执行闭包（执行节点，与 agentRef/toolRef/skillRef/mcpServerRef 互斥） */
+    private Closure<?> executeClosure;
+    /** 直接调用的工具名称（工具节点，与 agentRef/executeClosure/skillRef/mcpServerRef 互斥） */
+    private String toolRef;
+    /** 直接调用的 Skill 名称（技能节点，与 agentRef/executeClosure/toolRef/mcpServerRef 互斥） */
+    private String skillRef;
+    /** 直接调用的 MCP 服务器名称（MCP 节点，与 agentRef/executeClosure/toolRef/skillRef 互斥） */
+    private String mcpServerRef;
+    /** 直接调用的 MCP 工具名称 */
+    private String mcpToolRef;
     /** 输入转换闭包 */
     private Closure<?> inputTransform;
     /** 输出转换闭包 */
@@ -99,6 +109,65 @@ public class StepSpec {
 
     public void setAgentRef(String agentRef) {
         this.agentRef = agentRef;
+    }
+
+    public Closure<?> getExecuteClosure() {
+        return executeClosure;
+    }
+
+    public void setExecuteClosure(Closure<?> executeClosure) {
+        this.executeClosure = executeClosure;
+    }
+
+    public String getToolRef() {
+        return toolRef;
+    }
+
+    public void setToolRef(String toolRef) {
+        this.toolRef = toolRef;
+    }
+
+    public String getSkillRef() {
+        return skillRef;
+    }
+
+    public void setSkillRef(String skillRef) {
+        this.skillRef = skillRef;
+    }
+
+    public String getMcpServerRef() {
+        return mcpServerRef;
+    }
+
+    public void setMcpServerRef(String mcpServerRef) {
+        this.mcpServerRef = mcpServerRef;
+    }
+
+    public String getMcpToolRef() {
+        return mcpToolRef;
+    }
+
+    public void setMcpToolRef(String mcpToolRef) {
+        this.mcpToolRef = mcpToolRef;
+    }
+
+    /**
+     * 判断该步骤是否为直接执行模式（非 Agent 认知节点）。
+     */
+    public boolean isDirectExecution() {
+        return executeClosure != null || toolRef != null || skillRef != null || mcpServerRef != null;
+    }
+
+    /**
+     * 获取执行模式的描述字符串（用于日志和追踪）。
+     */
+    public String getExecutionMode() {
+        if (executeClosure != null) return "execute";
+        if (toolRef != null) return "tool:" + toolRef;
+        if (skillRef != null) return "skill:" + skillRef;
+        if (mcpServerRef != null) return "mcp:" + mcpServerRef + "/" + mcpToolRef;
+        if (agentRef != null) return "agent:" + agentRef;
+        return "undefined";
     }
 
     public Closure<?> getInputTransform() {
@@ -168,7 +237,7 @@ public class StepSpec {
     @Override
     public String toString() {
         return switch (type) {
-            case SEQUENTIAL -> "Step{name='" + name + "', agent='" + agentRef + "'}";
+            case SEQUENTIAL -> "Step{name='" + name + "', mode=" + getExecutionMode() + "}";
             case PARALLEL -> "Parallel{steps=" + parallelSteps.size() + "}";
             case CONDITION -> "Condition{branches=" + branches.keySet() + "}";
             case LOOP -> "Loop{maxIterations=" + maxIterations + ", body=" + loopBody.size() + "}";

@@ -1,6 +1,6 @@
 # AgentDSL 开发者入门指南
 
-> **文档版本**: v1.1 · 适用 AgentDSL v1.3.0  
+> **文档版本**: v1.2 · 适用 AgentDSL v1.4.0  
 > **目标读者**: 初次使用 AgentDSL 的开发者
 
 ---
@@ -13,11 +13,13 @@
 4. [给 Agent 添加工具 (Tools)](#4-给-agent-添加工具-tools)
 5. [使用 Workflow 编排多 Agent](#5-使用-workflow-编排多-agent)
 6. [工作流进阶：并行、条件、循环](#6-工作流进阶并行条件循环)
-7. [技能系统 (Skills)](#7-技能系统-skills)
-8. [MCP 协议集成](#8-mcp-协议集成)
-9. [记忆与安全护栏](#9-记忆与安全护栏)
-10. [CLI 命令行参考](#10-cli-命令行参考)
-11. [常见问题 (FAQ)](#11-常见问题-faq)
+7. [Workflow 直接执行模式（v1.4.0）](#7-workflow-直接执行模式v140)
+8. [技能系统 (Skills)](#8-技能系统-skills)
+9. [MCP 协议集成](#9-mcp-协议集成)
+10. [自主 Agent（Autonomous，v1.4.0）](#10-自主-agentautonomousv140)
+11. [记忆与安全护栏](#11-记忆与安全护栏)
+12. [CLI 命令行参考](#12-cli-命令行参考)
+13. [常见问题 (FAQ)](#13-常见问题-faq)
 
 ---
 
@@ -121,12 +123,13 @@ workflow('myFlow') { steps { step('s1') { agent 'agentA' } } }
 
 ### 2.2 执行模式
 
-AgentDSL 有两种执行模式：
+AgentDSL 支持三种 CLI 执行模式：
 
-| 模式              | CLI 参数                         | 说明                            |
-| ----------------- | -------------------------------- | ------------------------------- |
-| **Agent 对话**    | `--chat "消息"`                  | 向单个 Agent 发送消息并获取回复 |
-| **Workflow 执行** | `--workflow 名称 --input "输入"` | 执行一个多步骤工作流            |
+| 模式                 | CLI 参数                               | 说明                                            |
+| -------------------- | -------------------------------------- | ----------------------------------------------- |
+| **Agent 对话**       | `--chat "消息"`                        | 向单个 Agent 发送消息并获取回复                 |
+| **Workflow 执行**    | `--workflow 名称 --input "输入"`       | 执行一个多步骤工作流（支持直接执行节点）         |
+| **Autonomous 自主**  | `--autonomous "目标描述"`              | 启动自主 Agent 的 ReAct 循环（v1.4.0）           |
 
 ```bash
 # 模式 1: 与单个 Agent 对话
@@ -134,9 +137,12 @@ AgentDSL 有两种执行模式：
 
 # 模式 2: 执行 Workflow
 ./bin/agentdsl.sh run script.agent.groovy --workflow my-flow --input "待处理的文本"
+
+# 模式 3: 自主 Agent
+./bin/agentdsl.sh run script.agent.groovy --autonomous "分析最新 AI 论文并生成摘要"
 ```
 
-> **注意**：`--chat` 和 `--workflow` 是互斥的。使用 `--chat` 只会与一个 Agent 对话，**不会触发** 脚本中定义的 Workflow。
+> **注意**：`--chat`、`--workflow`、`--autonomous` 三者互斥，每次执行只能选其一。
 
 ---
 
@@ -619,7 +625,163 @@ workflow('translate-pipeline') {
 
 ---
 
-## 7. 技能系统 (Skills)
+## 7. Workflow 直接执行模式（v1.4.0）
+
+在传统 Workflow 中，每个 step 都要调用一个 Agent（LLM）来执行。v1.4.0 引入了**直接执行模式**，让 step 可以直接运行代码、调用工具、调用技能或调用 MCP 工具，完全绕过 LLM，消除不必要的"LLM Tax"（延迟、费用、幻觉风险）。
+
+### 7.1 五种执行模式概览
+
+| 模式      | 关键字    | LLM | 描述                                   |
+| --------- | --------- | --- | -------------------------------------- |
+| 认知节点  | `agent`   | ✅   | 引用 Agent，LLM 推理（原有行为）       |
+| 代码节点  | `execute` | ❌   | 直接执行 Groovy 闭包                   |
+| 工具节点  | `tool`    | ❌   | 直接调用已注册工具（全局或内置）       |
+| 技能节点  | `skill`   | ❌   | 直接调用已注册 Logic Skill             |
+| MCP 节点  | `mcp`     | ❌   | 直接调用指定 MCP 服务器上的工具        |
+
+> 每个 step 必须且只能选择其中一种模式，不可混用。
+
+### 7.2 execute：纯代码执行
+
+`execute` 闭包接收一个 `WorkflowExecutionContext` 参数，提供访问工作流上下文和调用工具的能力：
+
+```groovy
+workflow("code-demo") {
+    steps {
+        step("format-data") {
+            execute { ctx ->
+                // ctx.initialInput  - 工作流原始输入
+                // ctx.lastOutput    - 上一步输出
+                // ctx.getStepResult("step-name") - 按名称获取步骤结果
+                def items = ctx.initialInput.split(",")
+                return items.collect { it.trim().toUpperCase() }.join(" | ")
+            }
+        }
+
+        step("add-timestamp") {
+            execute { ctx ->
+                def data = ctx.lastOutput
+                // 通过 ctx.toolCall() 调用任意已注册工具
+                def ts = ctx.toolCall("format_timestamp", [:])
+                return "[${ts}] ${data}"
+            }
+        }
+    }
+}
+```
+
+**`WorkflowExecutionContext` 常用 API：**
+
+| API                                     | 说明                        |
+| --------------------------------------- | --------------------------- |
+| `ctx.initialInput`                      | 工作流初始输入              |
+| `ctx.lastOutput`                        | 上一步骤输出                |
+| `ctx.getStepResult("step-name")`        | 按名称读取任意已完成步骤结果 |
+| `ctx.getAllStepResults()`               | 获取全部步骤结果 Map        |
+| `ctx.toolCall("tool-name", [k: v, ...])` | 直接调用已注册工具          |
+
+### 7.3 tool：直接工具调用
+
+`tool` 模式绕过 LLM，直接执行已注册工具（全局 `tool()` 定义或内置工具）：
+
+```groovy
+tool("classify_priority") {
+    description "根据文本内容分类处理优先级"
+    parameter { name "text"; type "string"; required true }
+    execute { params ->
+        def text = params.text?.toLowerCase() ?: ""
+        if (text.contains("故障") || text.contains("宕机")) return "P0"
+        if (text.contains("慢") || text.contains("延迟")) return "P1"
+        return "P2"
+    }
+}
+
+workflow("classify-demo") {
+    steps {
+        step("classify") {
+            tool "classify_priority"
+            // input 闭包返回 Map 作为工具参数
+            input { text -> [text: text] }
+        }
+    }
+}
+```
+
+### 7.4 skill：直接技能调用
+
+`skill` 模式直接调用已注册的 Logic Skill（Prompt Skill 不支持直接调用）：
+
+```groovy
+skill("report_formatter") {
+    type "logic"
+    description "格式化报告"
+    parameter { name "content"; type "string"; required true }
+    parameter { name "level"; type "string"; required false }
+    execute { params ->
+        return "【${params.level ?: '普通'}】${params.content}"
+    }
+}
+
+workflow("format-demo") {
+    steps {
+        step("format") {
+            skill "report_formatter"
+            input { data -> [content: data, level: "重要"] }
+        }
+    }
+}
+```
+
+### 7.5 mcp：直接 MCP 工具调用
+
+`mcp` 模式直接调用连接的 MCP Server 上的特定工具：
+
+```groovy
+workflow("mcp-direct-demo") {
+    steps {
+        step("list-files") {
+            mcp "filesystem-server", "list_directory"
+            input { path -> [path: path] }
+        }
+    }
+}
+```
+
+> MCP Server 需要在脚本中的某个 Agent 上配置并注册，`mcp` 步骤引用该 Agent 所连接的 server name。
+
+### 7.6 混合编排：最佳实践
+
+将确定性任务（数据清洗、格式化、分类）分配给直接执行模式，将需要推理的任务交给 Agent，实现最优的成本/质量平衡：
+
+```groovy
+workflow("smart-pipeline") {
+    steps {
+        // ① 确定性：代码清洗数据（免 LLM）
+        step("clean") {
+            execute { ctx -> ctx.initialInput.trim().replaceAll(/\s+/, " ") }
+        }
+
+        // ② 推理：LLM 生成洞察（必须 LLM）
+        step("analyze") {
+            agent "data-analyst"
+            input { cleaned -> "请分析以下数据：\n${cleaned}" }
+        }
+
+        // ③ 确定性：代码格式化报告（免 LLM）
+        step("format") {
+            execute { ctx ->
+                def analysis = ctx.lastOutput
+                def date = new java.text.SimpleDateFormat("yyyy-MM-dd").format(new Date())
+                return "# 报告（${date}）\n\n${analysis}"
+            }
+        }
+    }
+}
+```
+
+---
+
+## 8. 技能系统 (Skills)
 
 Skill 是比 Tool 更高层的抽象，分为两种类型：
 
@@ -698,7 +860,7 @@ agent('brandWebAgent') {
 
 ---
 
-## 8. MCP 协议集成
+## 9. MCP 协议集成
 
 MCP (Model Context Protocol) 让 Agent 可以 **零代码** 接入外部工具服务（如 GitHub API、文件系统、Playwright 等）。
 
@@ -762,7 +924,98 @@ AgentDSL (MCP Client)                    MCP Server (外部进程)
 
 ---
 
-## 9. 记忆与安全护栏
+## 10. 自主 Agent（Autonomous，v1.4.0）
+
+自主 Agent 实现了"意图 → 规划 → 执行 → 观察 → 修正"的 ReAct 循环，用户只需描述目标，Agent 自主决策并多步完成任务。
+
+### 10.1 启用自主模式
+
+在 Agent 上添加 `autonomous { }` 块即可开启：
+
+```groovy
+agent('research-assistant') {
+    model {
+        provider 'ollama'
+        modelName 'qwen3:14b'
+    }
+
+    autonomous {
+        execution_mode 'plan'   // 'plan'（规划后确认执行）或 'fast'（直接执行）
+        max_steps 10            // 超过 10 步后暂停询问用户
+    }
+
+    tools {
+        include 'web_search'
+        include 'file_write'
+    }
+
+    systemPrompt '你是一个自主研究助手，帮助用户查阅资料并生成摘要报告。'
+}
+```
+
+### 10.2 两种执行模式
+
+| 模式     | 说明                                                         | 适用场景               |
+| -------- | ------------------------------------------------------------ | ---------------------- |
+| `"plan"` | 先由 PlannerEngine 生成多步计划，CLI 展示计划并等待用户确认后再执行 | 重要操作、高风险任务  |
+| `"fast"` | 跳过计划阶段，直接进入 ReAct 循环执行                        | 简单任务、快速响应     |
+
+### 10.3 运行自主 Agent
+
+使用 `--autonomous` 参数（而非 `--chat`）触发自主执行：
+
+```bash
+# plan 模式：先展示计划，确认后执行
+./bin/agentdsl.sh run autonomous-demo.agent.groovy \
+  --autonomous "研究量子计算最新进展，并将摘要保存到 /tmp/quantum-summary.md"
+
+# 输出示例（plan 模式）：
+# === 执行计划 ===
+# Step 1: 搜索 "量子计算 2026 最新研究"
+# Step 2: 搜索 "量子纠错突破进展"
+# Step 3: 整理要点并生成摘要
+# Step 4: 将摘要保存到 /tmp/quantum-summary.md
+# 
+# 是否确认执行？[Y/n]:
+```
+
+### 10.4 max_steps 熔断机制
+
+当自主循环执行步数超过 `max_steps` 时，系统自动暂停并询问：
+
+```
+[自主 Agent] 已执行 10 步，任务尚未完成。
+当前状态：已搜集 3 篇论文，正在汇总内容...
+
+是否继续执行？[Y=继续 / N=中止 / S=显示当前结果]:
+```
+
+### 10.5 ReAct 执行流程
+
+```
+用户输入目标
+      │
+      ▼
+  [plan 模式]     [fast 模式]
+PlannerEngine  ──────────────────┐
+生成计划           直接开始循环   │
+用户确认                          │
+      │                          │
+      ▼                          ▼
+  ┌─────────────────────────────────────┐
+  │             ReAct 循环              │
+  │  Thought → Act(Tool/Skill) → Observe│
+  │              │                      │
+  │         Reflect: 完成? 修正?        │
+  └──────────────┬──────────────────────┘
+                 │ 完成 or max_steps 熔断
+                 ▼
+           AutonomousResult
+```
+
+---
+
+## 11. 记忆与安全护栏
 
 ### 9.1 记忆 (Memory)
 
@@ -811,9 +1064,9 @@ agent('safe-agent') {
 
 ---
 
-## 10. CLI 命令行参考
+## 12. CLI 命令行参考
 
-### 10.1 命令总览
+### 12.1 命令总览
 
 ```bash
 # 运行脚本（对话模式）
@@ -828,6 +1081,9 @@ agent('safe-agent') {
 # 运行脚本（带调试功能，输出包含耗时、工具调用全链路追踪）
 ./bin/agentdsl.sh run <script> --workflow <workflow名> --input "输入" --debug
 
+# 运行脚本（自主 Agent 模式，v1.4.0）
+./bin/agentdsl.sh run <script> --autonomous "任务目标描述"
+
 # 验证脚本语法
 ./bin/agentdsl.sh validate <script>
 
@@ -835,29 +1091,31 @@ agent('safe-agent') {
 ./bin/agentdsl.sh list <script>
 ```
 
-### 10.2 参数详解
+### 12.2 参数详解
 
-| 参数         | 缩写 | 说明                                         |
-| ------------ | ---- | -------------------------------------------- |
-| `--chat`     | `-c` | 向 Agent 发送的消息文本                      |
-| `--agent`    | `-a` | 目标 Agent 名称（默认第一个）                |
-| `--workflow` | `-w` | 要执行的 Workflow 名称                       |
-| `--input`    | `-i` | Workflow 的初始输入文本                      |
-| `--sandbox`  |      | 启用安全沙箱（默认 false）                   |
-| `--debug`    |      | 开启调试追踪并显示详细执行流(替代旧版 trace) |
+| 参数           | 缩写 | 说明                                            |
+| -------------- | ---- | ----------------------------------------------- |
+| `--chat`       | `-c` | 向 Agent 发送的消息文本                         |
+| `--agent`      | `-a` | 目标 Agent 名称（默认第一个）                   |
+| `--workflow`   | `-w` | 要执行的 Workflow 名称                          |
+| `--input`      | `-i` | Workflow 的初始输入文本                         |
+| `--autonomous` |      | 目标描述，触发自主 Agent 执行（v1.4.0）         |
+| `--sandbox`    |      | 启用安全沙箱（默认 false）                      |
+| `--debug`      |      | 开启调试追踪并显示详细执行流（替代旧版 trace）  |
 
-### 10.3 `--chat` vs `--workflow` 选择指南
+### 12.3 执行模式选择指南
 
-| 场景                  | 使用方式                       |
-| --------------------- | ------------------------------ |
-| 与单个 Agent 简单对话 | `--chat "你的消息"`            |
-| 多 Agent 协作完成任务 | `--workflow xxx --input "..."` |
-| 测试某个特定 Agent    | `--agent name --chat "..."`    |
-| 需要流水线和数据传递  | `--workflow xxx --input "..."` |
+| 场景                        | 使用方式                            |
+| --------------------------- | ----------------------------------- |
+| 与单个 Agent 简单对话       | `--chat "你的消息"`                 |
+| 多 Agent 协作完成任务       | `--workflow xxx --input "..."`      |
+| 测试某个特定 Agent          | `--agent name --chat "..."`         |
+| 需要流水线和数据传递        | `--workflow xxx --input "..."`      |
+| 目标导向、自主多步执行任务  | `--autonomous "完成XXX任务"` (v1.4.0) |
 
 ---
 
-## 11. 常见问题 (FAQ)
+## 13. 常见问题 (FAQ)
 
 ### Q: 用 `--chat` 时，脚本里的 Workflow 会执行吗？
 
@@ -892,23 +1150,70 @@ agent('safe-agent') {
 
 功能上两者等价，编译后都注册为 LangChain4j 的 ToolSpecification。
 
+### Q: Workflow step 里的 `execute`/`tool`/`skill` 和 Agent 里的工具有什么区别？（v1.4.0）
+
+| 维度         | Agent 内 tool（via LLM）                 | Step 直接执行（execute/tool/skill）          |
+| ------------ | ---------------------------------------- | -------------------------------------------- |
+| 触发方式     | LLM 自主决策调用                         | 工作流编排层强制执行                         |
+| LLM 参与     | ✅ 是                                     | ❌ 否                                         |
+| 延迟/费用    | 高（每次经过 LLM 推理）                  | 低（直接代码执行）                           |
+| 确定性       | 低（LLM 可能选错工具或跳过）             | 高（编排层保证必定执行）                     |
+| 适用场景     | 需要 LLM 判断何时调用、如何调用          | 确定性的数据处理、格式化、分类等             |
+
+### Q: `--autonomous` 和 `--workflow` 什么时候各用什么？（v1.4.0）
+
+| 场景                           | 推荐模式       |
+| ------------------------------ | -------------- |
+| 任务步骤已知、数据流程固定     | `--workflow`   |
+| 目标模糊、步骤需要动态规划     | `--autonomous` |
+| 需要重复执行、可复现的流水线   | `--workflow`   |
+| 探索性任务、Agent 自主决策路径 | `--autonomous` |
+
+### Q: `execute` 闭包里可以访问什么数据？（v1.4.0）
+
+```groovy
+step("my-step") {
+    execute { ctx ->
+        ctx.initialInput           // 工作流最初的 --input 值
+        ctx.lastOutput             // 上一步的输出
+        ctx.getStepResult("name")  // 任意已完成步骤的输出
+        ctx.toolCall("tool-name", [param: value])  // 调用工具
+    }
+}
+```
+
+### Q: step 里 `tool`/`skill` 模式的 `input` 闭包应该返回什么？（v1.4.0）
+
+返回一个 `Map`，key 对应工具/技能的参数名称：
+
+```groovy
+step("classify") {
+    tool "my_classifier"
+    input { lastResult -> [text: lastResult, threshold: 0.8] }
+}
+```
+
+如果不写 `input`，系统会尝试将上一步输出直接作为参数（Map 类型）传入，或包装为 `{input: lastOutput}`。
+
 ---
 
 ## 附录 A: 示例索引
 
-| 示例文件                         | 演示特性                                    |
-| -------------------------------- | ------------------------------------------- |
-| `simple-chat.agent.groovy`       | 最简 Agent，入门                            |
-| `tool-agent.agent.groovy`        | 自定义工具 + 工具引用                       |
-| `enhanced-tools.agent.groovy`    | 内置工具 + 增强工具定义（timeout, onError） |
-| `workflow-pipeline.agent.groovy` | 顺序/并行/条件/循环 全部工作流类型          |
-| `skill-demo.agent.groovy`        | Prompt Skill + Logic Skill 定义             |
-| `skill-comparison.agent.groovy`  | 两种 Skill 类型对比                         |
-| `brand-homepage.agent.groovy`    | includeFile 加载外部 .skill.md              |
-| `mcp-github.agent.groovy`        | MCP GitHub Server 集成                      |
-| `mcp-multi-agent.agent.groovy`   | MCP + 多 Agent Workflow                     |
-| `database-report.agent.groovy`   | 内置 HTTP 工具 + Workflow                   |
+| 示例文件                                   | 演示特性                                              | 版本   |
+| ------------------------------------------ | ----------------------------------------------------- | ------ |
+| `simple-chat.agent.groovy`                 | 最简 Agent，入门                                      | v1.0   |
+| `tool-agent.agent.groovy`                  | 自定义工具 + 工具引用                                 | v1.0   |
+| `enhanced-tools.agent.groovy`              | 内置工具 + 增强工具定义（timeout, onError）           | v1.2   |
+| `workflow-pipeline.agent.groovy`           | 顺序/并行/条件/循环 全部工作流类型                    | v1.1   |
+| `skill-demo.agent.groovy`                  | Prompt Skill + Logic Skill 定义                       | v1.2   |
+| `skill-comparison.agent.groovy`            | 两种 Skill 类型对比                                   | v1.2   |
+| `brand-homepage.agent.groovy`              | includeFile 加载外部 .skill.md                        | v1.2   |
+| `mcp-github.agent.groovy`                  | MCP GitHub Server 集成                                | v1.2   |
+| `mcp-multi-agent.agent.groovy`             | MCP + 多 Agent Workflow                               | v1.2   |
+| `database-report.agent.groovy`             | 内置 HTTP 工具 + Workflow                             | v1.3   |
+| `workflow-direct-execution.agent.groovy`   | execute/tool/skill/mcp 直接执行 + 混合编排            | v1.4.0 |
+| `autonomous-agent.agent.groovy`            | Autonomous 自主 Agent（plan 模式 + fast 模式对比）    | v1.4.0 |
 
 ---
 
-> 📖 **深入了解**：[AgentDSL 语言定义规范 v1.2](lang-spec/AgentDSL-Language-Spec-v1.2.md) · [架构与扩展指南](Architecture_Guide_zh-CN.md)
+> 📖 **深入了解**：[AgentDSL 语言定义规范 v1.4.0](lang-spec/AgentDSL-Language-Spec-v1.3.md) · [架构与扩展指南](Architecture_Guide_zh-CN.md)

@@ -19,7 +19,11 @@ public class DebugEvent {
         WORKFLOW_START, // 工作流开始
         WORKFLOW_END, // 工作流结束
         WORKFLOW_STEP_START, // 工作流步骤开始
-        WORKFLOW_STEP_END // 工作流步骤结束
+        WORKFLOW_STEP_END, // 工作流步骤结束
+        CODE_EXECUTE, // 纯代码执行（execute 闭包）
+        DIRECT_TOOL_CALL, // 直接工具调用（绕过 LLM）
+        DIRECT_SKILL_CALL, // 直接 Skill 调用（绕过 LLM）
+        DIRECT_MCP_CALL // 直接 MCP 工具调用（绕过 LLM）
     }
 
     private final Type type;

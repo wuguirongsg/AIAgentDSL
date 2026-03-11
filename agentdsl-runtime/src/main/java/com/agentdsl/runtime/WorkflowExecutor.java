@@ -10,6 +10,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
@@ -127,43 +129,142 @@ public class WorkflowExecutor {
     }
 
     /**
-     * 顺序执行单个步骤，并记录 StepTrace。
+     * 顺序执行单个步骤，根据执行模式分发到对应处理逻辑。
+     * 支持五种执行模式：agent / execute / tool / skill / mcp
      */
     private void executeSequential(StepSpec step, WorkflowContext ctx) {
-        String agentName = step.getAgentRef();
-        log.debug("[Step:{}] 顺序执行, agent={}", step.getName(), agentName);
+        String executionMode = step.getExecutionMode();
+        log.debug("[Step:{}] 顺序执行, mode={}", step.getName(), executionMode);
 
-        // 记录步骤开始时间
         long stepStart = System.currentTimeMillis();
         String inputSummary = truncate(
                 ctx.getLastOutput() != null ? ctx.getLastOutput().toString() : "", 200);
 
-        // 1. 应用输入转换
-        String input = applyInputTransform(step, ctx);
-
         String stepStatus = "completed";
         Object finalOutput;
         try {
-            // 2. 调用 Agent
-            String output = agentExecutor.chat(agentName, input);
+            if (step.getExecuteClosure() != null) {
+                finalOutput = executeCodeBlock(step, ctx);
+            } else if (step.getToolRef() != null) {
+                finalOutput = executeDirectToolCall(step, ctx);
+            } else if (step.getSkillRef() != null) {
+                finalOutput = executeDirectSkillCall(step, ctx);
+            } else if (step.getMcpServerRef() != null) {
+                finalOutput = executeDirectMcpCall(step, ctx);
+            } else if (step.getAgentRef() != null) {
+                finalOutput = executeAgentCall(step, ctx);
+            } else {
+                throw new DslRuntimeException("ADSL-031",
+                        "步骤 '" + step.getName() + "' 未指定执行模式(agent/execute/tool/skill/mcp)");
+            }
 
-            // 3. 应用输出转换
-            finalOutput = applyOutputTransform(step, output);
-
-            // 4. 记录结果
             ctx.putStepResult(step.getName(), finalOutput);
         } catch (Exception e) {
             stepStatus = "failed";
             long durationMs = System.currentTimeMillis() - stepStart;
-            recordStepTrace(ctx, step.getName(), agentName, inputSummary, "ERROR", durationMs, stepStatus);
+            recordStepTrace(ctx, step.getName(), executionMode, inputSummary, "ERROR", durationMs, stepStatus);
             throw e;
         }
 
         long durationMs = System.currentTimeMillis() - stepStart;
-        String outputSummary = truncate(finalOutput.toString(), 200);
-        recordStepTrace(ctx, step.getName(), agentName, inputSummary, outputSummary, durationMs, stepStatus);
-        log.debug("[Step:{}] 完成, 耐时={}ms, 输出: {}", step.getName(), durationMs,
-                truncate(finalOutput.toString(), 100));
+        String outputSummary = truncate(finalOutput != null ? finalOutput.toString() : "null", 200);
+        recordStepTrace(ctx, step.getName(), executionMode, inputSummary, outputSummary, durationMs, stepStatus);
+        log.debug("[Step:{}] 完成, mode={}, 耗时={}ms, 输出: {}", step.getName(), executionMode, durationMs,
+                truncate(outputSummary, 100));
+    }
+
+    /**
+     * 模式 1：纯代码执行（execute 闭包）。
+     */
+    private Object executeCodeBlock(StepSpec step, WorkflowContext ctx) {
+        log.debug("[Step:{}] 执行代码块", step.getName());
+
+        if (com.agentdsl.core.metrics.DebugTracer.isEnabled()) {
+            com.agentdsl.core.metrics.DebugTracer.record(
+                    com.agentdsl.core.metrics.DebugEvent.Type.CODE_EXECUTE,
+                    step.getName(), java.util.Map.of("mode", "execute"));
+        }
+
+        WorkflowExecutionContext execCtx = new WorkflowExecutionContext(ctx, registry.getToolCallResolver());
+        Closure<?> closure = step.getExecuteClosure();
+        closure.setDelegate(execCtx);
+        closure.setResolveStrategy(Closure.DELEGATE_FIRST);
+
+        Object result = closure.getMaximumNumberOfParameters() == 0
+                ? closure.call()
+                : closure.call(execCtx);
+
+        return applyOutputTransform(step, result != null ? result.toString() : "null");
+    }
+
+    /**
+     * 模式 2：直接调用工具。
+     */
+    private Object executeDirectToolCall(StepSpec step, WorkflowContext ctx) {
+        String toolName = step.getToolRef();
+        log.debug("[Step:{}] 直接调用工具: {}", step.getName(), toolName);
+
+        if (com.agentdsl.core.metrics.DebugTracer.isEnabled()) {
+            com.agentdsl.core.metrics.DebugTracer.record(
+                    com.agentdsl.core.metrics.DebugEvent.Type.DIRECT_TOOL_CALL,
+                    step.getName(), java.util.Map.of("tool", toolName));
+        }
+
+        Map<String, Object> params = resolveParamsFromInput(step, ctx);
+        String result = registry.executeToolDirectly(toolName, params);
+        return applyOutputTransform(step, result);
+    }
+
+    /**
+     * 模式 3：直接调用 Skill。
+     */
+    private Object executeDirectSkillCall(StepSpec step, WorkflowContext ctx) {
+        String skillName = step.getSkillRef();
+        log.debug("[Step:{}] 直接调用 Skill: {}", step.getName(), skillName);
+
+        if (com.agentdsl.core.metrics.DebugTracer.isEnabled()) {
+            com.agentdsl.core.metrics.DebugTracer.record(
+                    com.agentdsl.core.metrics.DebugEvent.Type.DIRECT_SKILL_CALL,
+                    step.getName(), java.util.Map.of("skill", skillName));
+        }
+
+        Map<String, Object> params = resolveParamsFromInput(step, ctx);
+        String result = registry.executeSkillDirectly(skillName, params);
+        return applyOutputTransform(step, result);
+    }
+
+    /**
+     * 模式 4：直接调用 MCP 工具。
+     * 暂使用 registry 中已注册的 MCP 工具执行器。
+     */
+    private Object executeDirectMcpCall(StepSpec step, WorkflowContext ctx) {
+        String serverName = step.getMcpServerRef();
+        String toolName = step.getMcpToolRef();
+        log.debug("[Step:{}] 直接调用 MCP: {}/{}", step.getName(), serverName, toolName);
+
+        if (com.agentdsl.core.metrics.DebugTracer.isEnabled()) {
+            com.agentdsl.core.metrics.DebugTracer.record(
+                    com.agentdsl.core.metrics.DebugEvent.Type.DIRECT_MCP_CALL,
+                    step.getName(),
+                    java.util.Map.of("mcpServer", serverName, "mcpTool", toolName));
+        }
+
+        Map<String, Object> params = resolveParamsFromInput(step, ctx);
+        // MCP 工具在注册时以 toolName 为 key 存入 toolExecutors，直接按工具名调用
+        String result = registry.executeToolDirectly(toolName, params);
+        return applyOutputTransform(step, result);
+    }
+
+    /**
+     * 模式 5：调用 Agent（现有逻辑）。
+     */
+    private Object executeAgentCall(StepSpec step, WorkflowContext ctx) {
+        String agentName = step.getAgentRef();
+        log.debug("[Step:{}] 调用 Agent: {}", step.getName(), agentName);
+
+        String input = applyInputTransform(step, ctx);
+        String output = agentExecutor.chat(agentName, input);
+        return applyOutputTransform(step, output);
     }
 
     /**
@@ -182,7 +283,7 @@ public class WorkflowExecutor {
     }
 
     /**
-     * 并行执行多个步骤。
+     * 并行执行多个步骤（支持所有执行模式）。
      */
     private void executeParallel(StepSpec step, WorkflowContext ctx) {
         List<StepSpec> parallelSteps = step.getParallelSteps();
@@ -191,31 +292,17 @@ public class WorkflowExecutor {
         ExecutorService executor = Executors.newFixedThreadPool(
                 Math.min(parallelSteps.size(), maxParallelThreads));
 
-        // For DebugTracer ThreadLocal across parallel executions, we would need
-        // a thread context propagator. For now, since tracing parallel steps
-        // in a linear console might be messy, we just collect main thread events.
-        // We will propagate tracer state to child threads.
         final boolean isTracing = com.agentdsl.core.metrics.DebugTracer.isEnabled();
 
         try {
-            // 提交所有并行任务
             List<Future<ParallelStepResult>> futures = new ArrayList<>();
             for (StepSpec parallelStep : parallelSteps) {
-                // 每个并行步骤共享相同的上下文输入，但独立保存结果
-                final String input = applyInputTransform(parallelStep, ctx);
                 futures.add(executor.submit(() -> {
                     if (isTracing) {
                         com.agentdsl.core.metrics.DebugTracer.enable();
-                        // Currently can't merge back parallel traces easily without refactoring
-                        // DebugTracer,
-                        // so we just instrument the main thread components for now or just let tasks
-                        // run.
-                        // For simplicity in CLI debugging, parallel agent calls might be missed if we
-                        // don't collect them.
                     }
                     try {
-                        String output = agentExecutor.chat(parallelStep.getAgentRef(), input);
-                        Object finalOutput = applyOutputTransform(parallelStep, output);
+                        Object finalOutput = executeParallelSingleStep(parallelStep, ctx);
                         return new ParallelStepResult(parallelStep.getName(), finalOutput);
                     } finally {
                         if (isTracing) {
@@ -225,7 +312,6 @@ public class WorkflowExecutor {
                 }));
             }
 
-            // 收集结果
             for (Future<ParallelStepResult> future : futures) {
                 try {
                     ParallelStepResult result = future.get(5, TimeUnit.MINUTES);
@@ -244,6 +330,28 @@ public class WorkflowExecutor {
             log.debug("[Parallel] 所有步骤完成");
         } finally {
             executor.shutdownNow();
+        }
+    }
+
+    /**
+     * 执行单个并行步骤，支持所有执行模式。
+     */
+    private Object executeParallelSingleStep(StepSpec step, WorkflowContext ctx) {
+        if (step.getExecuteClosure() != null) {
+            return executeCodeBlock(step, ctx);
+        } else if (step.getToolRef() != null) {
+            return executeDirectToolCall(step, ctx);
+        } else if (step.getSkillRef() != null) {
+            return executeDirectSkillCall(step, ctx);
+        } else if (step.getMcpServerRef() != null) {
+            return executeDirectMcpCall(step, ctx);
+        } else if (step.getAgentRef() != null) {
+            String input = applyInputTransform(step, ctx);
+            String output = agentExecutor.chat(step.getAgentRef(), input);
+            return applyOutputTransform(step, output);
+        } else {
+            throw new DslRuntimeException("ADSL-031",
+                    "并行步骤 '" + step.getName() + "' 未指定执行模式");
         }
     }
 
@@ -312,6 +420,37 @@ public class WorkflowExecutor {
         }
 
         log.debug("[Loop] 循环结束");
+    }
+
+    /**
+     * 从 input 闭包解析工具/Skill/MCP 参数。
+     * input 闭包应返回 Map；如果返回其他类型，尝试包装为单参数 Map。
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> resolveParamsFromInput(StepSpec step, WorkflowContext ctx) {
+        Closure<?> inputTransform = step.getInputTransform();
+        if (inputTransform != null) {
+            Object transformed = invokeClosure(inputTransform, ctx.getLastOutput());
+            if (transformed instanceof Map) {
+                return (Map<String, Object>) transformed;
+            }
+            if (transformed != null) {
+                Map<String, Object> wrapper = new LinkedHashMap<>();
+                wrapper.put("input", transformed);
+                return wrapper;
+            }
+        }
+        // 无 input 闭包时，尝试将 lastOutput 作为参数
+        Object lastOutput = ctx.getLastOutput();
+        if (lastOutput instanceof Map) {
+            return (Map<String, Object>) lastOutput;
+        }
+        if (lastOutput != null) {
+            Map<String, Object> wrapper = new LinkedHashMap<>();
+            wrapper.put("input", lastOutput);
+            return wrapper;
+        }
+        return Collections.emptyMap();
     }
 
     /**
