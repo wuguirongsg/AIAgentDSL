@@ -74,6 +74,7 @@ public class AgentExecutor {
         }
 
         try {
+            int dynamicDiscoveryAttempts = 0;
             // 1. 构建消息列表
             List<ChatMessage> messages = new ArrayList<>();
 
@@ -105,6 +106,22 @@ public class AgentExecutor {
             Map<String, ToolExecutor> allToolExecutors = instance.hasTools()
                     ? new HashMap<>(instance.getToolExecutors())
                     : new HashMap<>();
+
+            // 2.1 主动发现：若 auto_discover_mcp=true 且当前没有任何工具，
+            //     在第一次模型调用前基于用户消息主动搜索并挂载 MCP 工具。
+            if (tools.isEmpty() && instance.getSpec().isAutoDiscoverMcp()) {
+                log.info("[{}] 当前无工具，触发主动 MCP 发现, userMessage={}", agentName,
+                        truncate(userMessage, 60));
+                boolean discovered = registry.tryAutoDiscoverAndAttachTool(instance, "", userMessage);
+                if (discovered) {
+                    tools = new ArrayList<>(instance.getToolSpecifications());
+                    allToolExecutors.putAll(instance.getToolExecutors());
+                    dynamicDiscoveryAttempts++;
+                    log.info("[{}] 主动 MCP 发现完成，加载了 {} 个工具", agentName, tools.size());
+                } else {
+                    log.warn("[{}] 主动 MCP 发现未找到合适工具，继续执行（无工具）", agentName);
+                }
+            }
 
             for (int iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
                 ChatResponse response;
@@ -206,6 +223,21 @@ public class AgentExecutor {
                     }
 
                     ToolExecutor executor = allToolExecutors.get(toolName);
+
+                    if (executor == null) {
+                        boolean discoverySucceeded = false;
+                        if (instance.getSpec().isAutoDiscoverMcp() && dynamicDiscoveryAttempts < 1) {
+                            dynamicDiscoveryAttempts++;
+                            discoverySucceeded = registry.tryAutoDiscoverAndAttachTool(instance, toolName, userMessage);
+                            if (discoverySucceeded) {
+                                // 刷新本轮可用工具列表，确保后续模型请求可见新工具。
+                                tools = new ArrayList<>(instance.getToolSpecifications());
+                                allToolExecutors.putAll(instance.getToolExecutors());
+                                executor = allToolExecutors.get(toolName);
+                                log.info("[{}] 工具 '{}' 已通过动态 MCP 发现挂载", agentName, toolName);
+                            }
+                        }
+                    }
 
                     if (executor == null) {
                         log.warn("[{}] 未找到工具执行器: {}", agentName, toolName);

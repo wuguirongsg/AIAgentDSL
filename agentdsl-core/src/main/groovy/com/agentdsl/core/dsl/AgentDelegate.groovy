@@ -141,4 +141,14 @@ class AgentDelegate {
         // 隐式配置 MCP 被移除，改用 NativeBrowserTool
     }
 
+    /** auto_discover_mcp true */
+    void auto_discover_mcp(boolean enabled) {
+        spec.autoDiscoverMcp = enabled
+    }
+
+    /** mcp_registry "mcp.so" */
+    void mcp_registry(String registry) {
+        spec.mcpRegistry = registry
+    }
+
 }

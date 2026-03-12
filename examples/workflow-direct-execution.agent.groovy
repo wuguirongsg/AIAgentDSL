@@ -333,3 +333,8 @@ workflow('ticket-routing-pipeline') {
         }
     }
 }
+
+// 运行示例：
+// shell/agentdsl.sh run examples/workflow-direct-execution.agent.groovy --workflow order-processing-pipeline --input "ORD-20260310-001"
+// shell/agentdsl.sh run examples/workflow-direct-execution.agent.groovy --workflow smart-report-pipeline --input "用户增长数据:新增1200人,留存率78%"
+// shell/agentdsl.sh run examples/workflow-direct-execution.agent.groovy --workflow ticket-routing-pipeline --input "P0 级别故障：支付服务不可用"   

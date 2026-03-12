@@ -5,6 +5,7 @@ import com.agentdsl.core.metrics.DebugEvent;
 import com.agentdsl.core.metrics.DebugTracer;
 import com.agentdsl.core.spec.AutonomousSpec;
 import com.agentdsl.runtime.AgentInstance;
+import com.agentdsl.runtime.AgentRegistry;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
@@ -50,9 +51,15 @@ public class AutonomousExecutor {
     private static final Logger log = LoggerFactory.getLogger(AutonomousExecutor.class);
 
     private final UserInteraction userInteraction;
+    private final AgentRegistry registry;
 
     public AutonomousExecutor(UserInteraction userInteraction) {
+        this(userInteraction, null);
+    }
+
+    public AutonomousExecutor(UserInteraction userInteraction, AgentRegistry registry) {
         this.userInteraction = userInteraction;
+        this.registry = registry;
     }
 
     /**
@@ -170,6 +177,27 @@ public class AutonomousExecutor {
                 ? new HashMap<>(instance.getToolExecutors())
                 : new HashMap<>();
 
+        // 主动发现：auto_discover_mcp=true 且当前无工具时，基于任务目标先搜索并挂载 MCP
+        int dynamicDiscoveryAttempts = 0;
+        if (tools.isEmpty() && registry != null && instance.getSpec().isAutoDiscoverMcp()) {
+            userInteraction.showProgress("🔍 正在从 MCP 仓库中自动发现可用工具...");
+            log.info("[{}] 自主模式主动 MCP 发现, goal={}", agentName, truncate(userGoal, 60));
+            boolean found = registry.tryAutoDiscoverAndAttachTool(instance, "", userGoal);
+            if (found) {
+                tools = new ArrayList<>(instance.getToolSpecifications());
+                toolExecutors = new HashMap<>(instance.getToolExecutors());
+                dynamicDiscoveryAttempts++;
+                String toolNames = tools.stream()
+                        .map(t -> t.name())
+                        .collect(java.util.stream.Collectors.joining(", "));
+                userInteraction.showProgress("✅ 已自动发现并挂载 " + tools.size() + " 个工具: " + toolNames + "\n");
+                log.info("[{}] 自主模式主动 MCP 发现完成，加载了 {} 个工具", agentName, tools.size());
+            } else {
+                userInteraction.showProgress("⚠️  未能从 MCP 仓库找到匹配工具，将以无工具模式继续执行\n");
+                log.warn("[{}] 自主模式主动 MCP 发现未找到合适工具，继续执行（无工具）", agentName);
+            }
+        }
+
         // 构建 ReAct System Prompt
         String reactSystemPrompt = buildReActSystemPrompt(
                 instance.getSpec().getSystemPrompt(), userGoal, tools);
@@ -265,6 +293,25 @@ public class AutonomousExecutor {
 
                 ToolExecutor executor = toolExecutors.get(toolName);
                 String toolResult;
+
+                // 被动发现：工具不存在时尝试动态挂载（每轮最多 1 次）
+                if (executor == null && registry != null
+                        && instance.getSpec().isAutoDiscoverMcp()
+                        && dynamicDiscoveryAttempts < 1) {
+                    dynamicDiscoveryAttempts++;
+                    userInteraction.showProgress("🔍 工具 '" + toolName + "' 未找到，正在从 MCP 仓库自动发现...");
+                    boolean found = registry.tryAutoDiscoverAndAttachTool(instance, toolName, userGoal);
+                    if (found) {
+                        tools = new ArrayList<>(instance.getToolSpecifications());
+                        toolExecutors = new HashMap<>(instance.getToolExecutors());
+                        executor = toolExecutors.get(toolName);
+                        userInteraction.showProgress("✅ 工具 '" + toolName + "' 已自动挂载\n");
+                        log.info("[{}] 被动 MCP 发现成功，工具 '{}' 已挂载", agentName, toolName);
+                    } else {
+                        userInteraction.showProgress("⚠️  未能从 MCP 仓库找到工具 '" + toolName + "'\n");
+                        log.warn("[{}] 被动 MCP 发现失败，工具 '{}' 不可用", agentName, toolName);
+                    }
+                }
 
                 if (executor == null) {
                     toolResult = "Error: Tool '" + toolName + "' not found";

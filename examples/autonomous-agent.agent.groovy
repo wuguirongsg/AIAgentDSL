@@ -65,8 +65,9 @@ agent('FastAgent') {
 
     tools {
         include 'http_get'
+        include 'web_search'
         include 'json_parse'
     }
 
-    systemPrompt '你是一个快速执行助手，收到任务后直接开始执行，不需要事先规划。'
+    systemPrompt '你是一个自主任务助手，帮助用户完成复杂的多步骤任务。'
 }

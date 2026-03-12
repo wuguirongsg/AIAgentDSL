@@ -153,4 +153,24 @@ class McpDslParsingTest {
         AgentSpec agent = result.getAgents().get(0);
         assertNull(agent.getMcp(), "MCP spec should be null when not configured");
     }
+
+    @Test
+    void shouldParseAutoDiscoverMcpSettings() {
+        String dsl = """
+                agent("auto-mcp") {
+                    model {
+                        provider "ollama"
+                        modelName "qwen:0.5b-chat"
+                    }
+                    auto_discover_mcp true
+                    mcp_registry "mcp.so"
+                }
+                """;
+
+        DslCompileResult result = compiler.compile(dsl);
+        AgentSpec agent = result.getAgents().get(0);
+
+        assertTrue(agent.isAutoDiscoverMcp());
+        assertEquals("mcp.so", agent.getMcpRegistry());
+    }
 }

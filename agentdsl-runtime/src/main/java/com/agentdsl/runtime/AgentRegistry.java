@@ -2,6 +2,8 @@ package com.agentdsl.runtime;
 
 import com.agentdsl.core.exception.DslRuntimeException;
 import com.agentdsl.core.spec.AgentSpec;
+import com.agentdsl.core.spec.McpServerSpec;
+import com.agentdsl.core.spec.McpSpec;
 import com.agentdsl.core.spec.SkillSpec;
 import com.agentdsl.core.spec.ToolSpec;
 import com.agentdsl.core.spec.WorkflowSpec;
@@ -22,6 +24,10 @@ import dev.langchain4j.service.tool.ToolExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -43,23 +49,33 @@ public class AgentRegistry {
     private final LangChainToolBridge toolBridge;
     private final LangChainRagFactory ragFactory;
     private final McpToolProviderBridge mcpBridge;
+    private final McpDiscoveryService mcpDiscoveryService;
     private final List<McpToolsResult> mcpConnections = new ArrayList<>();
     private final List<NativeBrowserTool> activeBrowserTools = new ArrayList<>();
 
     public AgentRegistry() {
         this(new LangChainModelFactory(), new LangChainMemoryFactory(),
-                new LangChainToolBridge(), new LangChainRagFactory());
+                new LangChainToolBridge(), new LangChainRagFactory(), new SimpleMcpDiscoveryService());
     }
 
     public AgentRegistry(LangChainModelFactory modelFactory,
             LangChainMemoryFactory memoryFactory,
             LangChainToolBridge toolBridge,
             LangChainRagFactory ragFactory) {
+        this(modelFactory, memoryFactory, toolBridge, ragFactory, new SimpleMcpDiscoveryService());
+    }
+
+    public AgentRegistry(LangChainModelFactory modelFactory,
+            LangChainMemoryFactory memoryFactory,
+            LangChainToolBridge toolBridge,
+            LangChainRagFactory ragFactory,
+            McpDiscoveryService mcpDiscoveryService) {
         this.modelFactory = modelFactory;
         this.memoryFactory = memoryFactory;
         this.toolBridge = toolBridge;
         this.ragFactory = ragFactory;
         this.mcpBridge = new McpToolProviderBridge();
+        this.mcpDiscoveryService = mcpDiscoveryService;
 
         // 注入 toolCall 解析器：允许 Logic Skill 闭包内调用已注册的全局工具
         this.toolBridge.setToolCallResolver((toolName, params) -> {
@@ -249,9 +265,17 @@ public class AgentRegistry {
             log.info("Agent '{}' 已配置 RAG", agentSpec.getName());
         }
 
-        // 5. 处理 MCP 工具
+        // 5. 处理 MCP 工具（静态配置的 npx 命令也做 shebang 包装，与动态发现一致）
         if (agentSpec.getMcp() != null && !agentSpec.getMcp().getServers().isEmpty()) {
             try {
+                for (McpServerSpec serverSpec : agentSpec.getMcp().getServers()) {
+                    if (serverSpec.getCommand() != null && !serverSpec.getCommand().isEmpty()) {
+                        List<String> wrapped = wrapNpxCommandWithNode(serverSpec.getCommand());
+                        if (wrapped != serverSpec.getCommand()) {
+                            serverSpec.setCommand(wrapped);
+                        }
+                    }
+                }
                 List<String> hitlActions = agentSpec.getBrowserUse() != null
                         ? agentSpec.getBrowserUse().getHitlActions()
                         : null;
@@ -392,10 +416,170 @@ public class AgentRegistry {
     }
 
     /**
+     * 在运行时自动发现并挂载 MCP 工具。
+     * V1 仅做最小闭环：发现 → 白名单检查 → 连接 → 注册工具。
+     */
+    public synchronized boolean tryAutoDiscoverAndAttachTool(AgentInstance instance,
+            String missingToolName, String userMessage) {
+        if (instance == null || instance.getSpec() == null || !instance.getSpec().isAutoDiscoverMcp()) {
+            return false;
+        }
+        if (instance.getToolExecutors().containsKey(missingToolName)) {
+            return true;
+        }
+
+        String registryName = instance.getSpec().getMcpRegistry();
+        if (registryName == null || registryName.isBlank()) {
+            registryName = "mcp.so";
+        }
+
+        List<McpDiscoveryService.DiscoveredMcpServer> candidates = mcpDiscoveryService.discover(
+                registryName, missingToolName, userMessage);
+        if (candidates.isEmpty()) {
+            log.warn("[MCP-AUDIT] auto discover failed, agent={}, tool={}, reason=no-candidate",
+                    instance.getName(), missingToolName);
+            return false;
+        }
+
+        log.info("[MCP-AUDIT] will try {} candidate(s), timeout=60s each (tip: -Dagentdsl.mcp.wrapper.debug=true for wrapper log)",
+                candidates.size());
+
+        // 依次尝试每个候选，跳过白名单不允许或连接失败的（如超时、缺 API Key 等）
+        for (McpDiscoveryService.DiscoveredMcpServer candidate : candidates) {
+            List<String> command = candidate.command();
+            if (!isAllowedDynamicCommand(command)) {
+                log.warn("[MCP-AUDIT] auto discover blocked by whitelist, agent={}, tool={}, command={}",
+                        instance.getName(), missingToolName, command);
+                continue;
+            }
+            // 避免“执行环境误判”：部分 npm 包的 bin 是 .js 但无 shebang，被 shell 执行会报 import: command not found
+            command = wrapNpxCommandWithNode(command);
+
+            McpServerSpec serverSpec = new McpServerSpec(candidate.serverName());
+            serverSpec.setTransport("stdio");
+            serverSpec.setCommand(command);
+            serverSpec.setTimeout(60);  // 动态发现首次 npx 安装可能较慢，给足时间
+            serverSpec.setLogEvents(false);
+            if (Boolean.getBoolean("agentdsl.mcp.wrapper.debug")) {
+                Map<String, String> env = serverSpec.getEnv() != null ? new HashMap<>(serverSpec.getEnv()) : new HashMap<>();
+                env.put("AGENTDSL_MCP_WRAPPER_DEBUG", "1");
+                serverSpec.setEnv(env);
+                log.info("[MCP-AUDIT] wrapper debug enabled, logs: /tmp/agentdsl-mcp-wrapper.log");
+            }
+
+            McpSpec mcpSpec = new McpSpec();
+            mcpSpec.setServers(List.of(serverSpec));
+
+            long connectStartMs = System.currentTimeMillis();
+            String pkgLabel = command.size() >= 3 ? command.get(command.size() - 1) : candidate.serverName();
+            try {
+                log.info("[MCP-AUDIT] connecting candidate #{}, pkg={}, agent={}",
+                        candidates.indexOf(candidate) + 1, pkgLabel, instance.getName());
+                McpToolsResult result = mcpBridge.connect(mcpSpec, null);
+                long elapsedMs = System.currentTimeMillis() - connectStartMs;
+                if (result.toolSpecifications().isEmpty()) {
+                    result.close();
+                    log.warn("[MCP-AUDIT] candidate connected but no tools after {}ms, skipping, pkg={}",
+                            elapsedMs, pkgLabel);
+                    continue;
+                }
+                mcpConnections.add(result);
+                instance.getToolSpecifications().addAll(result.toolSpecifications());
+                instance.getToolExecutors().putAll(result.toolExecutors());
+
+                boolean success = instance.getToolExecutors().containsKey(missingToolName);
+                log.info("[MCP-AUDIT] auto discover OK after {}ms, server={}, mountedTools={}, success={}",
+                        elapsedMs, candidate.serverName(), result.toolSpecifications().size(), success);
+                return success || !result.toolSpecifications().isEmpty();
+            } catch (Exception e) {
+                long elapsedMs = System.currentTimeMillis() - connectStartMs;
+                boolean isTimeout = e.getMessage() != null && e.getMessage().contains("Timeout");
+                log.warn("[MCP-AUDIT] candidate failed after {}ms, pkg={}, error={}{}",
+                        elapsedMs, pkgLabel, e.getMessage(),
+                        isTimeout ? " (tip: first npx install can be slow, or package may need API key)" : "");
+                // 继续尝试下一个候选
+            }
+        }
+
+        log.error("[MCP-AUDIT] all {} candidates failed, agent={}, tool={}",
+                candidates.size(), instance.getName(), missingToolName);
+        return false;
+    }
+
+    /**
      * 获取所有已注册的工作流名称。
      */
     public Set<String> getWorkflowNames() {
         return Collections.unmodifiableSet(workflows.keySet());
+    }
+
+    /**
+     * 将 npx -y @pkg 包装为 node &lt;wrapper&gt; @pkg，确保包的 bin 始终用 Node 执行，
+     * 避免无 shebang 的 .js 被 shell 执行导致 "import: command not found"。
+     */
+    private List<String> wrapNpxCommandWithNode(List<String> command) {
+        if (command == null || command.size() < 3) return command;
+        if (!"npx".equals(command.get(0)) || !"-y".equals(command.get(1))) return command;
+        String pkg = command.get(2);
+        if (pkg == null || !pkg.startsWith("@")) return command;
+
+        try {
+            Path wrapperPath = getOrExtractNpxWrapperScript();
+            List<String> wrapped = new ArrayList<>();
+            wrapped.add("node");
+            wrapped.add(wrapperPath.toAbsolutePath().toString());
+            wrapped.add(pkg);
+            if (command.size() > 3) {
+                wrapped.addAll(command.subList(3, command.size()));
+            }
+            log.debug("[MCP-AUDIT] wrapped npx command with node launcher: {} -> {}", command, wrapped);
+            return wrapped;
+        } catch (Exception e) {
+            log.warn("[MCP-AUDIT] could not use npx wrapper, using original command: {}", e.getMessage());
+            return command;
+        }
+    }
+
+    private static volatile Path npxWrapperScriptPath;
+
+    private static Path getOrExtractNpxWrapperScript() throws IOException {
+        if (npxWrapperScriptPath != null) return npxWrapperScriptPath;
+        synchronized (AgentRegistry.class) {
+            if (npxWrapperScriptPath != null) return npxWrapperScriptPath;
+            Path temp = Files.createTempFile("agentdsl-mcp-npx-run", ".js");
+            temp.toFile().deleteOnExit();
+            try (InputStream in = AgentRegistry.class.getResourceAsStream("/mcp-npx-run.js")) {
+                if (in == null) throw new IOException("Resource /mcp-npx-run.js not found");
+                Files.copy(in, temp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+            npxWrapperScriptPath = temp;
+            return temp;
+        }
+    }
+
+    /**
+     * 动态 MCP 命令白名单校验。
+     * V1 允许 npx -y @scope/package 格式（scoped npm 包），
+     * 以及 docker run 格式。
+     */
+    private boolean isAllowedDynamicCommand(List<String> command) {
+        if (command == null || command.size() < 3) {
+            return false;
+        }
+        String executable = command.get(0);
+
+        // npx -y @scope/package（scoped npm 包）
+        if ("npx".equals(executable) && "-y".equals(command.get(1))
+                && command.get(2).startsWith("@")) {
+            return true;
+        }
+
+        // docker run -i --rm ...（容器化 MCP Server）
+        if ("docker".equals(executable) && command.contains("run")) {
+            return true;
+        }
+
+        return false;
     }
 
     /**

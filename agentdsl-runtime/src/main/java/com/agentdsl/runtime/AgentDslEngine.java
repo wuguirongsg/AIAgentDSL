@@ -54,7 +54,7 @@ public class AgentDslEngine implements AutoCloseable {
         this.registry = new AgentRegistry();
         this.executor = new AgentExecutor(registry);
         this.workflowExecutor = new WorkflowExecutor(executor, registry);
-        this.autonomousExecutor = new AutonomousExecutor(new ConsoleUserInteraction());
+        this.autonomousExecutor = new AutonomousExecutor(new ConsoleUserInteraction(), this.registry);
         registerBuiltinTools();
     }
 
@@ -142,7 +142,7 @@ public class AgentDslEngine implements AutoCloseable {
      * 设置自定义的用户交互实现（用于测试或 Web 场景）。
      */
     public void setUserInteraction(UserInteraction userInteraction) {
-        this.autonomousExecutor = new AutonomousExecutor(userInteraction);
+        this.autonomousExecutor = new AutonomousExecutor(userInteraction, this.registry);
     }
 
     /**

@@ -26,6 +26,8 @@ public class AgentSpec {
     private BrowserUseSpec browserUse;
     private SearchSpec searchConfig;
     private AutonomousSpec autonomous;
+    private boolean autoDiscoverMcp = false;
+    private String mcpRegistry;
 
     public AgentSpec() {
     }
@@ -176,6 +178,22 @@ public class AgentSpec {
         return autonomous != null;
     }
 
+    public boolean isAutoDiscoverMcp() {
+        return autoDiscoverMcp;
+    }
+
+    public void setAutoDiscoverMcp(boolean autoDiscoverMcp) {
+        this.autoDiscoverMcp = autoDiscoverMcp;
+    }
+
+    public String getMcpRegistry() {
+        return mcpRegistry;
+    }
+
+    public void setMcpRegistry(String mcpRegistry) {
+        this.mcpRegistry = mcpRegistry;
+    }
+
     @Override
     public String toString() {
         return "AgentSpec{" +
@@ -191,6 +209,8 @@ public class AgentSpec {
                 ", skills=" + skillRefs.size() + " refs + " + inlineSkills.size() + " inline" +
                 ", datasources=" + datasourceRefs.size() + " refs" +
                 ", mcp=" + mcp +
+                ", autoDiscoverMcp=" + autoDiscoverMcp +
+                ", mcpRegistry='" + mcpRegistry + '\'' +
                 ", searchConfig=" + searchConfig +
                 ", autonomous=" + autonomous +
                 '}';
