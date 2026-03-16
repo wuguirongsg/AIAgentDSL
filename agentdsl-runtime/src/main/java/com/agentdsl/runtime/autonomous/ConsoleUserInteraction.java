@@ -1,12 +1,12 @@
 package com.agentdsl.runtime.autonomous;
 
 import java.util.Scanner;
+import java.util.Set;
 
-/**
- * 控制台交互实现。
- * CLI 场景下通过 System.in 读取用户输入实现计划确认和执行控制。
- */
 public class ConsoleUserInteraction implements UserInteraction {
+
+    private static final Set<String> EXIT_COMMANDS = Set.of("/exit", "/quit", "q", "exit", "quit");
+    private static final Set<String> HELP_COMMANDS = Set.of("/help", "help");
 
     private final Scanner scanner;
 
@@ -58,6 +58,65 @@ public class ConsoleUserInteraction implements UserInteraction {
 
     @Override
     public void showProgress(String message) {
-        System.out.println(message);
+        System.out.print(message);
+    }
+
+    @Override
+    public String readGoal() {
+        System.out.print("\n\033[36m➜\033[0m ");
+        return scanner.nextLine();
+    }
+
+    @Override
+    public void showResult(AutonomousResult result) {
+        System.out.println();
+        System.out.println("═".repeat(60));
+        System.out.println(result.getFinalAnswer());
+        System.out.println("═".repeat(60));
+        System.out.printf("📊 执行了 %d 步，%s%n",
+                result.getTotalSteps(),
+                result.isCompleted() ? "✅ 目标已完成" : "⚠️ " + result.getTerminationReason());
+    }
+
+    @Override
+    public void showWelcome(String agentName) {
+        System.out.println();
+        System.out.println("╔════════════════════════════════════════════════════════════╗");
+        System.out.println("║        🤖 AgentDSL Autonomous 交互式模式                  ║");
+        System.out.println("╠════════════════════════════════════════════════════════════╣");
+        System.out.println("║  Agent: " + padRight(agentName, 48) + "║");
+        System.out.println("║  输入任务目标，或 /help 查看命令帮助                      ║");
+        System.out.println("╚════════════════════════════════════════════════════════════╝");
+    }
+
+    @Override
+    public void showGoodbye() {
+        System.out.println();
+        System.out.println("👋 对话结束，会话历史已保存。");
+    }
+
+    @Override
+    public boolean isExitCommand(String input) {
+        return EXIT_COMMANDS.contains(input.trim().toLowerCase());
+    }
+
+    @Override
+    public boolean isHelpCommand(String input) {
+        return HELP_COMMANDS.contains(input.trim().toLowerCase());
+    }
+
+    @Override
+    public void showHelp() {
+        System.out.println();
+        System.out.println("┌─────────────────────────────────────┐");
+        System.out.println("│ 📖 可用命令                         │");
+        System.out.println("├─────────────────────────────────────┤");
+        System.out.println("│ /exit, /quit, q   - 退出对话        │");
+        System.out.println("│ /help             - 显示帮助        │");
+        System.out.println("└─────────────────────────────────────┘");
+    }
+
+    private String padRight(String s, int length) {
+        return String.format("%-" + length + "s", s);
     }
 }

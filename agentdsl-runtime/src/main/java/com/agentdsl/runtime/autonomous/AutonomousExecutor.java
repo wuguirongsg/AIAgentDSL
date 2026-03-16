@@ -103,6 +103,48 @@ public class AutonomousExecutor {
         }
     }
 
+    /**
+     * 交互式多轮对话模式。
+     * 允许用户多次输入任务目标，保持上下文记忆。
+     *
+     * @param instance 已注册的 Agent 实例
+     */
+    public void executeInteractive(AgentInstance instance) {
+        AutonomousSpec config = instance.getSpec().getAutonomous();
+        if (config == null) {
+            throw new DslRuntimeException("ADSL-030",
+                    "Agent '" + instance.getName() + "' 未配置 autonomous 模式");
+        }
+
+        userInteraction.showWelcome(instance.getName());
+
+        while (true) {
+            String goal = userInteraction.readGoal();
+
+            if (userInteraction.isExitCommand(goal)) {
+                userInteraction.showGoodbye();
+                break;
+            }
+
+            if (userInteraction.isHelpCommand(goal)) {
+                userInteraction.showHelp();
+                continue;
+            }
+
+            String trimmedGoal = goal.trim();
+            if (trimmedGoal.isEmpty()) {
+                continue;
+            }
+
+            try {
+                AutonomousResult result = execute(instance, trimmedGoal);
+                userInteraction.showResult(result);
+            } catch (Exception e) {
+                System.out.println("❌ 执行失败: " + e.getMessage());
+            }
+        }
+    }
+
     // ────────────────────────────────────────────────────────────────
     // Plan 模式
     // ────────────────────────────────────────────────────────────────
@@ -204,6 +246,11 @@ public class AutonomousExecutor {
 
         // 消息历史
         List<ChatMessage> messages = new ArrayList<>();
+        
+        if (instance.getMemory() != null) {
+            messages.addAll(instance.getMemory().messages());
+        }
+        
         messages.add(SystemMessage.from(reactSystemPrompt));
         messages.add(UserMessage.from("请开始执行以下任务目标：\n" + userGoal));
 

@@ -1,6 +1,6 @@
 # AgentDSL 开发者入门指南
 
-> **文档版本**: v1.2 · 适用 AgentDSL v1.4.0  
+> **文档版本**: v1.4 · 适用 AgentDSL v1.4.0  
 > **目标读者**: 初次使用 AgentDSL 的开发者
 
 ---
@@ -18,6 +18,8 @@
 9. [MCP 协议集成](#9-mcp-协议集成)
 10. [自主 Agent（Autonomous，v1.4.0）](#10-自主-agentautonomousv140)
 11. [记忆与安全护栏](#11-记忆与安全护栏)
+    11.1 [记忆 (Memory)](#111-记忆-memory)
+    11.2 [安全护栏 (Guardrails)](#112-安全护栏-guardrails)
 12. [CLI 命令行参考](#12-cli-命令行参考)
 13. [常见问题 (FAQ)](#13-常见问题-faq)
 
@@ -41,10 +43,12 @@
 git clone <repo-url> && cd AgentDSL
 
 # 构建（首次会自动下载依赖）
-./bin/build.sh
+./shell/build.sh
 ```
 
 构建完成后会在 `agentdsl-cli/build/libs/` 下产生 `agentdsl.jar`。
+
+构建完成后，你可以使用 `./shell/agentdsl.sh` 运行脚本。为了方便使用，建议将 `shell` 目录加入 PATH 或创建一个 `bin` 软链接。
 
 ### 1.3 配置 API Key
 
@@ -61,12 +65,12 @@ export OPENAI_API_KEY=your-key
 # 无需额外配置
 ```
 
-> 完整的 Provider 列表见 [语言规范 §6](doc/lang-spec/AgentDSL-Language-Spec-v1.2.md)，支持 OpenAI、Ollama、Gemini、Claude、DeepSeek、Kimi、通义千问、豆包、智谱、MiniMax 等。
+> 完整的 Provider 列表见 [语言规范 §6](lang-spec/AgentDSL-Language-Spec-v1.4.md)，支持 OpenAI、Ollama、Gemini、Claude、DeepSeek、Kimi、通义千问、豆包、智谱、MiniMax 等。
 
 ### 1.4 运行第一个脚本
 
 ```bash
-./bin/agentdsl.sh run examples/simple-chat.agent.groovy --chat "你好"
+./shell/agentdsl.sh run examples/simple-chat.agent.groovy --chat "你好"
 ```
 
 ---
@@ -133,13 +137,13 @@ AgentDSL 支持三种 CLI 执行模式：
 
 ```bash
 # 模式 1: 与单个 Agent 对话
-./bin/agentdsl.sh run script.agent.groovy --chat "你好"
+./shell/agentdsl.sh run script.agent.groovy --chat "你好"
 
 # 模式 2: 执行 Workflow
-./bin/agentdsl.sh run script.agent.groovy --workflow my-flow --input "待处理的文本"
+./shell/agentdsl.sh run script.agent.groovy --workflow my-flow --input "待处理的文本"
 
 # 模式 3: 自主 Agent
-./bin/agentdsl.sh run script.agent.groovy --autonomous "分析最新 AI 论文并生成摘要"
+./shell/agentdsl.sh run script.agent.groovy --autonomous "分析最新 AI 论文并生成摘要"
 ```
 
 > **注意**：`--chat`、`--workflow`、`--autonomous` 三者互斥，每次执行只能选其一。
@@ -165,7 +169,7 @@ agent('greeter') {
 运行：
 
 ```bash
-./bin/agentdsl.sh run examples/my-first.agent.groovy --chat "你好，介绍一下你自己"
+./shell/agentdsl.sh run examples/my-first.agent.groovy --chat "你好，介绍一下你自己"
 ```
 
 ### 3.2 Agent 的完整结构
@@ -194,13 +198,56 @@ agent('name') {
 
 > 只有 `model` 块是必填的（需要 `provider` + `modelName`），其他全部可选。
 
-### 3.3 指定目标 Agent
+### 3.3 模型参数配置 (customSetting)
+
+`customSetting` 用于设置模型特定的参数，不同 Provider 支持的参数有所不同：
+
+**通用支持 Provider**：OpenAI、Claude、DeepSeek、Kimi、Doubao、Qwen、Zhipu、Minimax 等通过 `customParameters` 全部支持。
+
+**特殊支持 Provider**：
+
+| Provider | 支持参数 | 说明 |
+|----------|---------|------|
+| **Ollama** | `think`, `returnThinking`, `stop`, `minP`, `responseFormat` | 本地模型特定参数 |
+| **Gemini** | `seed`, `frequencyPenalty`, `presencePenalty`, `returnThinking`, `sendThinking`, `stopSequences` | Google AI 特定参数 |
+
+**Ollama 示例：**
+
+```groovy
+agent('think-agent') {
+    model {
+        provider 'ollama'
+        modelName 'qwen3:14b'
+        customSetting 'think', true            // 启用思考模式
+        customSetting 'returnThinking', true   // 返回思考过程
+        customSetting 'stop', ['###', 'END']   // 停止词列表
+    }
+    systemPrompt '你是一个思考型助手。'
+}
+```
+
+**Gemini 示例：**
+
+```groovy
+agent('gemini-agent') {
+    model {
+        provider 'gemini'
+        modelName 'gemini-2.0-flash'
+        customSetting 'seed', 42                // 固定随机种子
+        customSetting 'returnThinking', true    // 返回思考过程
+        customSetting 'stopSequences', ['END']  // 停止序列
+    }
+    systemPrompt '你是一个智能助手。'
+}
+```
+
+### 3.4 指定目标 Agent
 
 如果脚本中定义了多个 Agent，默认用第一个。可用 `--agent` 指定：
 
 ```bash
 # 脚本中有 agentA 和 agentB，指定 agentB
-./bin/agentdsl.sh run script.agent.groovy --agent agentB --chat "你好"
+./shell/agentdsl.sh run script.agent.groovy --agent agentB --chat "你好"
 ```
 
 ---
@@ -211,7 +258,7 @@ agent('name') {
 
 ### 4.1 使用内置工具
 
-AgentDSL 预置了涵盖多种不同数据形态维度的 13 个基础工具，直接 `include` 即可：
+AgentDSL 预置了涵盖多种不同数据形态维度的 14 个基础工具，直接 `include` 即可：
 
 | 内置工具          | 功能                            |
 | ----------------- | ------------------------------- |
@@ -408,7 +455,7 @@ agent('search-assistant') {
 
 运行对话：
 ```bash
-./bin/agentdsl.sh run script.agent.groovy --chat "今天有哪些最新的 AI 新闻？"
+./shell/agentdsl.sh run script.agent.groovy --chat "今天有哪些最新的 AI 新闻？"
 ```
 
 > **安全提示**：使用 `web_search` 需要在 `search` 块或环境变量中正确配置对应的 API Key。建议使用 `env()` 函数保护密钥。
@@ -482,7 +529,7 @@ workflow('translate-and-review') {
 运行：
 
 ```bash
-./bin/agentdsl.sh run my-workflow.agent.groovy \
+./shell/agentdsl.sh run my-workflow.agent.groovy \
   --workflow translate-and-review \
   --input "人工智能正在改变世界"
 ```
@@ -966,7 +1013,7 @@ agent('research-assistant') {
 
 ```bash
 # plan 模式：先展示计划，确认后执行
-./bin/agentdsl.sh run autonomous-demo.agent.groovy \
+./shell/agentdsl.sh run autonomous-demo.agent.groovy \
   --autonomous "研究量子计算最新进展，并将摘要保存到 /tmp/quantum-summary.md"
 
 # 输出示例（plan 模式）：
@@ -1006,7 +1053,7 @@ PlannerEngine  ──────────────────┐
   │             ReAct 循环              │
   │  Thought → Act(Tool/Skill) → Observe│
   │              │                      │
-  │         Reflect: 完成? 修正?        │
+  │         Reflect (规划中)              │
   └──────────────┬──────────────────────┘
                  │ 完成 or max_steps 熔断
                  ▼
@@ -1017,7 +1064,7 @@ PlannerEngine  ──────────────────┐
 
 ## 11. 记忆与安全护栏
 
-### 9.1 记忆 (Memory)
+### 11.1 记忆 (Memory)
 
 记忆让 Agent 在多轮对话中保留上下文（在 Workflow 的单次执行中通常不需要）：
 
@@ -1038,7 +1085,7 @@ agent('chat-bot') {
 | `message_window` | 保留最近 N 条消息 | 一般对话           |
 | `token_window`   | 按 token 数量保留 | 需要精确控制上下文 |
 
-### 9.2 安全护栏 (Guardrails)
+### 11.2 安全护栏 (Guardrails)
 
 限制 Agent 的行为边界：
 
@@ -1070,25 +1117,28 @@ agent('safe-agent') {
 
 ```bash
 # 运行脚本（对话模式）
-./bin/agentdsl.sh run <script> --chat "消息"
+./shell/agentdsl.sh run <script> --chat "消息"
+
+# 运行脚本（交互式会话模式，支持多轮对话）
+./shell/agentdsl.sh run <script> --interactive
 
 # 运行脚本（workspace 模式，指定 Agent）
-./bin/agentdsl.sh run <script> --agent <agent名> --chat "消息"
+./shell/agentdsl.sh run <script> --agent <agent名> --chat "消息"
 
 # 运行脚本（工作流模式）
-./bin/agentdsl.sh run <script> --workflow <workflow名> --input "输入"
+./shell/agentdsl.sh run <script> --workflow <workflow名> --input "输入"
 
 # 运行脚本（带调试功能，输出包含耗时、工具调用全链路追踪）
-./bin/agentdsl.sh run <script> --workflow <workflow名> --input "输入" --debug
+./shell/agentdsl.sh run <script> --workflow <workflow名> --input "输入" --debug
 
 # 运行脚本（自主 Agent 模式，v1.4.0）
-./bin/agentdsl.sh run <script> --autonomous "任务目标描述"
+./shell/agentdsl.sh run <script> --autonomous "任务目标描述"
 
 # 验证脚本语法
-./bin/agentdsl.sh validate <script>
+./shell/agentdsl.sh validate <script>
 
 # 列出脚本中的定义
-./bin/agentdsl.sh list <script>
+./shell/agentdsl.sh list <script>
 ```
 
 ### 12.2 参数详解
@@ -1097,8 +1147,9 @@ agent('safe-agent') {
 | -------------- | ---- | ----------------------------------------------- |
 | `--chat`       | `-c` | 向 Agent 发送的消息文本                         |
 | `--agent`      | `-a` | 目标 Agent 名称（默认第一个）                   |
+| `--interactive`| `-i` | 启动交互式会话模式，支持多轮对话                 |
 | `--workflow`   | `-w` | 要执行的 Workflow 名称                          |
-| `--input`      | `-i` | Workflow 的初始输入文本                         |
+| `--input`      |      | Workflow 的初始输入文本                         |
 | `--autonomous` |      | 目标描述，触发自主 Agent 执行（v1.4.0）         |
 | `--sandbox`    |      | 启用安全沙箱（默认 false）                      |
 | `--debug`      |      | 开启调试追踪并显示详细执行流（替代旧版 trace）  |
@@ -1108,10 +1159,33 @@ agent('safe-agent') {
 | 场景                        | 使用方式                            |
 | --------------------------- | ----------------------------------- |
 | 与单个 Agent 简单对话       | `--chat "你的消息"`                 |
+| 与 Agent 多轮对话           | `--interactive`                     |
 | 多 Agent 协作完成任务       | `--workflow xxx --input "..."`      |
 | 测试某个特定 Agent          | `--agent name --chat "..."`         |
 | 需要流水线和数据传递        | `--workflow xxx --input "..."`      |
 | 目标导向、自主多步执行任务  | `--autonomous "完成XXX任务"` (v1.4.0) |
+
+### 12.4 交互式会话模式
+
+使用 `--interactive` 或 `-i` 参数启动交互式会话模式，支持与 Agent 进行多轮对话：
+
+```bash
+./shell/agentdsl.sh run script.agent.groovy --interactive
+```
+
+**交互式会话功能：**
+
+| 命令 | 功能 |
+|------|------|
+| `/help` | 显示帮助信息 |
+| `/exit`, `/quit`, `q` | 退出会话 |
+| `/clear` | 清屏 |
+| `/restart` | 重新加载 Agent |
+
+**交互式会话特点：**
+- 自动保存对话历史
+- 支持上下文记忆
+- 提供友好的命令行界面
 
 ---
 
@@ -1216,4 +1290,4 @@ step("classify") {
 
 ---
 
-> 📖 **深入了解**：[AgentDSL 语言定义规范 v1.4.0](lang-spec/AgentDSL-Language-Spec-v1.3.md) · [架构与扩展指南](Architecture_Guide_zh-CN.md)
+> 📖 **深入了解**：[AgentDSL 语言定义规范 v1.4.0](lang-spec/AgentDSL-Language-Spec-v1.4.md) · [架构与扩展指南](Architecture_Guide_zh-CN.md)

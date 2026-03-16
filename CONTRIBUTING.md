@@ -36,11 +36,11 @@ If you have an idea, please open an issue and use the `enhancement` label. Descr
 
 ## Development Setup
 
-AgentDSL requires **Java 21**. We use Gradle for building the project.
+AgentDSL requires **Java 17**. We use Gradle for building the project.
 
 ```bash
 # Clone the repo
-git clone https://github.com/your-org/AgentDSL.git
+git clone https://github.com/wuguirong/AgentDSL.git
 cd AgentDSL
 
 # Build the project
@@ -48,20 +48,53 @@ cd AgentDSL
 
 # Run all tests
 ./gradlew test
+
+# Run CLI with a specific agent script
+./gradlew :agentdsl-cli:run --args="run your-agent.groovy --chat 'Hello'"
 ```
 
-## Anatomy of the Project
+## Project Structure
 
-*   `agentdsl-core`: The DSL engine, AST definitions, and core interfaces.
-*   `agentdsl-compiler`: Validates and compiles the `.agent.groovy` scripts.
-*   `agentdsl-runtime`: The execution engine managing agents and workflows.
-*   `agentdsl-langchain4j`: Bridges the DSL concepts to LangChain4j.
-*   `agentdsl-mcp`: Model Context Protocol client implementation.
-*   `agentdsl-tools`: Built-in tools and annotation scanner.
-*   `agentdsl-cli`: The command-line interface.
+AgentDSL is organized as a Gradle multi-module project:
 
-## Style Guide
+| Module | Description |
+|--------|-------------|
+| `agentdsl-core` | The DSL engine, AST definitions, AST validators, and core interfaces. |
+| `agentdsl-compiler` | Validates and compiles `.agent.groovy` scripts into executable AST. |
+| `agentdsl-runtime` | The execution engine managing agents, workflows, and tool execution. |
+| `agentdsl-langchain4j` | Bridges DSL concepts to LangChain4j for LLM provider integration. |
+| `agentdsl-mcp` | Model Context Protocol client implementation for external MCP server integration. |
+| `agentdsl-tools` | Built-in tools (Excel, PDF, JDBC, Web Search, Browser Automation) and `@AgentTool` annotation scanner. |
+| `agentdsl-cli` | The command-line interface with `run`, `list`, and `validate` commands. |
 
-We generally follow standard Java coding conventions. Please ensure your code is cleanly formatted and well-documented. For Groovy code (the DSL internals), favor readability and Groovy idiomatic style where appropriate.
+## Key Features
+
+- **MCP Integration**: Mount external MCP servers (GitHub, Slack, etc.) as native Java tools
+- **Autonomous Agent**: "Intent -> Planning -> Execution -> Observation" autonomous loop
+- **Skills System**: Both prompt-based and logic-based skills for flexible agent behavior
+- **Sandbox Security**: Prevent unauthorized system calls, environment variable leaks, file I/O, and thread creation
+- **Observability**: Full-lifecycle debugging with `--debug` flag
+
+## Coding Standards
+
+- Follow standard Java coding conventions
+- Use meaningful variable and method names
+- Write unit tests for new features
+- Ensure code is cleanly formatted (Gradle formatting is automatically applied)
+- For Groovy DSL internals, favor readability and Groovy idiomatic style
+
+## Running Examples
+
+Check the `examples` directory for sample agent scripts:
+
+```bash
+./gradlew :agentdsl-cli:run --args="run examples/hello.agent.groovy --chat 'Hello'"
+```
+
+## Documentation
+
+- [Language Specification](doc/lang-spec/AgentDSL-Language-Spec-v1.4.md)
+- [User Guide (Chinese)](doc/User_Guide_zh-CN.md)
+- [Architecture Guide](doc/Architecture_Guide.md)
 
 Thank you for contributing!

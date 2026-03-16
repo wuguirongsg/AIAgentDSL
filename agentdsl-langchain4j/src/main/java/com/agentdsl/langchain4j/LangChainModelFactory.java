@@ -7,10 +7,14 @@ import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.googleai.GoogleAiGeminiChatModel;
 import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
+import dev.langchain4j.model.chat.request.ResponseFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 
 /**
  * LangChain4j 模型工厂。
@@ -68,6 +72,7 @@ public class LangChainModelFactory {
                 .temperature(spec.getTemperature())
                 .topP(spec.getTopP())
                 .maxTokens(spec.getMaxTokens())
+                .customParameters(spec.getCustomSettings())
                 .timeout(Duration.ofSeconds(spec.getTimeout()));
 
         if (spec.getBaseUrl() != null) {
@@ -83,12 +88,46 @@ public class LangChainModelFactory {
             baseUrl = "http://localhost:11434";
         }
 
-        return OllamaChatModel.builder()
+        var builder = OllamaChatModel.builder()
                 .baseUrl(baseUrl)
                 .modelName(spec.getModelName())
                 .temperature(spec.getTemperature())
-                .timeout(Duration.ofSeconds(spec.getTimeout()))
-                .build();
+                .timeout(Duration.ofSeconds(spec.getTimeout()));
+
+        // 处理 Ollama 特定参数
+        Map<String, Object> settings = spec.getCustomSettings();
+        
+        // think 参数 - 控制是否启用思考模式
+        if (settings.containsKey("think")) {
+            builder.think(toBoolean(settings.get("think")));
+        }
+        
+        // returnThinking 参数 - 是否返回思考过程
+        if (settings.containsKey("returnThinking")) {
+            builder.returnThinking(toBoolean(settings.get("returnThinking")));
+        }
+        
+        // stop 参数 - 停止词列表
+        if (settings.containsKey("stop")) {
+            builder.stop(toStringList(settings.get("stop")));
+        }
+        
+        // minP 参数 - 最小概率阈值
+        if (settings.containsKey("minP")) {
+            builder.minP(toDouble(settings.get("minP")));
+        }
+        
+        // responseFormat 参数 - 响应格式
+        if (settings.containsKey("responseFormat")) {
+            String format = settings.get("responseFormat").toString();
+            if ("json".equalsIgnoreCase(format)) {
+                builder.responseFormat(ResponseFormat.JSON);
+            } else if ("text".equalsIgnoreCase(format)) {
+                builder.responseFormat(ResponseFormat.TEXT);
+            }
+        }
+
+        return builder.build();
     }
 
     /**
@@ -111,6 +150,7 @@ public class LangChainModelFactory {
                 .temperature(spec.getTemperature())
                 .topP(spec.getTopP())
                 .maxTokens(spec.getMaxTokens())
+                .customParameters(spec.getCustomSettings())
                 .timeout(Duration.ofSeconds(spec.getTimeout()))
                 .build();
     }
@@ -136,6 +176,7 @@ public class LangChainModelFactory {
                 .temperature(spec.getTemperature())
                 .topP(spec.getTopP())
                 .maxTokens(spec.getMaxTokens())
+                .customParameters(spec.getCustomSettings())
                 .timeout(Duration.ofSeconds(spec.getTimeout()))
                 .build();
     }
@@ -152,6 +193,7 @@ public class LangChainModelFactory {
                 .temperature(spec.getTemperature())
                 .topP(spec.getTopP())
                 .maxTokens(spec.getMaxTokens())
+                .customParameters(spec.getCustomSettings())
                 .timeout(Duration.ofSeconds(spec.getTimeout()))
                 .build();
     }
@@ -162,13 +204,51 @@ public class LangChainModelFactory {
             apiKey = resolveEnv("GEMINI_API_KEY");
         }
 
-        return GoogleAiGeminiChatModel.builder()
+        var builder = GoogleAiGeminiChatModel.builder()
                 .apiKey(apiKey)
                 .modelName(spec.getModelName())
                 .temperature(spec.getTemperature())
-                .topK(spec.getTopP() != null ? spec.getTopP().intValue() : null)
-                .maxOutputTokens(spec.getMaxTokens())
-                .build();
+                .maxOutputTokens(spec.getMaxTokens());
+
+        // topP 转换为 topK (Gemini 使用 topK)
+        if (spec.getTopP() != null) {
+            builder.topK(spec.getTopP().intValue());
+        }
+
+        // 处理 Gemini 特定参数
+        Map<String, Object> settings = spec.getCustomSettings();
+        
+        // seed 参数 - 随机种子
+        if (settings.containsKey("seed")) {
+            builder.seed(toInteger(settings.get("seed")));
+        }
+        
+        // frequencyPenalty 参数 - 频率惩罚
+        if (settings.containsKey("frequencyPenalty")) {
+            builder.frequencyPenalty(toDouble(settings.get("frequencyPenalty")));
+        }
+        
+        // presencePenalty 参数 - 存在惩罚
+        if (settings.containsKey("presencePenalty")) {
+            builder.presencePenalty(toDouble(settings.get("presencePenalty")));
+        }
+        
+        // returnThinking 参数 - 是否返回思考过程
+        if (settings.containsKey("returnThinking")) {
+            builder.returnThinking(toBoolean(settings.get("returnThinking")));
+        }
+        
+        // sendThinking 参数 - 是否发送思考
+        if (settings.containsKey("sendThinking")) {
+            builder.sendThinking(toBoolean(settings.get("sendThinking")));
+        }
+        
+        // stopSequences 参数 - 停止序列
+        if (settings.containsKey("stopSequences")) {
+            builder.stopSequences(toStringList(settings.get("stopSequences")));
+        }
+
+        return builder.build();
     }
 
     /**
@@ -180,9 +260,42 @@ public class LangChainModelFactory {
             value = System.getenv(key);
         }
         if (value == null) {
-            throw new DslRuntimeException("ADSL-012",
-                    "环境变量未找到: " + key + "。请设置该环境变量后重试。");
+            throw new DslRuntimeException("ADSL-012","环境变量未找到: " + key + "。请设置该环境变量后重试。");
         }
         return value;
+    }
+
+    private static Boolean toBoolean(Object value) {
+        if (value == null) return null;
+        if (value instanceof Boolean) return (Boolean) value;
+        return Boolean.valueOf(value.toString());
+    }
+
+    private static Integer toInteger(Object value) {
+        if (value == null) return null;
+        if (value instanceof Integer) return (Integer) value;
+        if (value instanceof Number) return ((Number) value).intValue();
+        return Integer.valueOf(value.toString());
+    }
+
+    private static Double toDouble(Object value) {
+        if (value == null) return null;
+        if (value instanceof Double) return (Double) value;
+        if (value instanceof Number) return ((Number) value).doubleValue();
+        return Double.valueOf(value.toString());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> toStringList(Object value) {
+        if (value == null) return null;
+        if (value instanceof List) {
+            return ((List<?>) value).stream()
+                    .map(Object::toString)
+                    .toList();
+        }
+        if (value instanceof String) {
+            return Arrays.asList(((String) value).split(","));
+        }
+        return List.of(value.toString());
     }
 }

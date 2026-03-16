@@ -45,4 +45,8 @@ class ModelDelegate {
     void timeout(Integer timeout) {
         spec.timeout = timeout
     }
+
+    void customSetting(String key, Object value) {
+        spec.addCustomSetting(key, value)
+    }
 }

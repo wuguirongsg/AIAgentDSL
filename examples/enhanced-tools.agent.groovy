@@ -5,8 +5,8 @@ agent('tools-demo') {
     description '内置工具演示 Agent'
 
     model {
-        provider 'ollama'
-        modelName 'qwen:0.5b-chat'
+        provider 'gemini'
+        modelName 'gemini-2.5-flash'
     }
 
     systemPrompt '''你是一个全能助手，可以：
@@ -24,6 +24,7 @@ agent('tools-demo') {
         include 'json_query'
         include 'file_read'
         include 'file_write'
+        include 'cmd_execute'
 
         // 自定义工具：增强语法演示
         tool('calculate') {

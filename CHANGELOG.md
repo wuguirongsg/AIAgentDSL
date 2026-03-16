@@ -8,7 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Core DSL**: Initial implementation of the `agent`, `tool`, and `workflow` blocks.
+- **Autonomous Agent**: Implemented "Intent -> Planning -> Execution -> Observation" autonomous loop. Agents can now autonomously decide and complete complex tasks with only a goal set by the user.
+- **Workflow Tool Execution**: Workflows now support direct tool invocation and code execution, enabling complex multi-step business flows.
+- **MCP Service Discovery**: Agents can autonomously discover and invoke MCP services, dynamically finding and mounting external MCP servers.
+- **Network Search Tools**: Built-in real-time web search capabilities supporting Tavily, Serper, and Zhipu search APIs.
+- **Browser Automation**: Native Playwright integration for browser automation tasks.
+- **Skills System**: Full-featured skills system supporting both prompt-based and logic-based skills for flexible agent behavior.
+- **Debug Trace**: Full-lifecycle debugging with `--debug` flag for clear reasoning-action-observation traces.
+- **Core DSL**: Implementation of `agent`, `tool`, and `workflow` blocks.
 - **Compiler**: AST generation, `DslCompiler`, and `DslValidator`.
 - **Runtime**: `AgentExecutor`, `AgentRegistry`, and execution trace capabilities.
 - **LangChain4j Bridge**: `LangChainModelFactory`, `LangChainToolBridge` linking DSL specifications to the LangChain4j runtime API.
@@ -31,3 +38,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 - Groovy script sandbox enforcement enabled by default.
+
+---
+
+## [0.1.0-SNAPSHOT] - Project Initialization
+
+### Added
+- Initial project setup with Gradle multi-module structure.
+- Core DSL engine with AST definitions and core interfaces.
+- LangChain4j integration module.
+- MCP client implementation.
+- Built-in tools and annotation scanner.
+- CLI for running and validating agent scripts.

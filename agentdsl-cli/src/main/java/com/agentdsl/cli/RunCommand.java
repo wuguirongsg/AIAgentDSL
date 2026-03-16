@@ -65,13 +65,34 @@ public class RunCommand implements Callable<Integer> {
     @Option(names = { "--debug", "-d" }, description = "输出详细的调试级别追踪信息（包括模型 I/O、工具调用）", defaultValue = "false")
     private boolean debugModel;
 
-    @Option(names = { "--autonomous", "--auto" }, description = "以自主模式执行，指定任务目标描述")
+    @Option(names = { "--autonomous", "--auto" }, 
+            description = "以自主模式执行，指定任务目标描述（可省略，配合 -ic 进入交互模式）",
+            arity = "0..1")
     private String autonomousGoal;
+
+    @Option(names = { "--interactive", "-ic" }, description = "交互式多轮对话模式，从控制台读取输入（忽略 --chat）", defaultValue = "false")
+    private boolean interactive;
 
     @Override
     public Integer call() {
-        if (chatMessage == null && workflowName == null && autonomousGoal == null) {
-            System.err.println("❌ 请指定 --chat <消息> 或 --workflow <名称> --input <输入> 或 --autonomous <目标>");
+        if (chatMessage == null && workflowName == null && autonomousGoal == null && !interactive) {
+            System.err.println("❌ 请指定 --chat <消息> 或 --workflow <名称> --input <输入> 或 --autonomous <目标> 或 --interactive");
+            System.err.println("   或使用 --autonomous -ic 进入自主模式交互对话");
+            return 1;
+        }
+
+        if (chatMessage != null && interactive) {
+            System.err.println("❌ --chat 和 --interactive 不能同时使用");
+            return 1;
+        }
+
+        if (workflowName != null && interactive) {
+            System.err.println("❌ --workflow 和 --interactive 不能同时使用");
+            return 1;
+        }
+
+        if (chatMessage != null && autonomousGoal != null) {
+            System.err.println("❌ --chat 和 --autonomous 不能同时使用");
             return 1;
         }
 
@@ -123,7 +144,21 @@ public class RunCommand implements Callable<Integer> {
                     return 0;
                 }
 
-                // 自主模式执行
+                // 自主模式交互执行 (--autonomous --interactive 或 --auto -ic)
+                if (interactive && (autonomousGoal != null || isAutonomousAgentConfigured(engine))) {
+                    String targetAgent = resolveTargetAgent(engine);
+                    if (targetAgent == null)
+                        return 1;
+
+                    com.agentdsl.runtime.autonomous.AutonomousExecutor executor = 
+                        new com.agentdsl.runtime.autonomous.AutonomousExecutor(
+                            new com.agentdsl.runtime.autonomous.ConsoleUserInteraction(), 
+                            engine.getRegistry());
+                    com.agentdsl.runtime.AgentInstance instance = engine.getRegistry().get(targetAgent);
+                    executor.executeInteractive(instance);
+                    return 0;
+                }
+
                 if (autonomousGoal != null) {
                     String targetAgent = resolveTargetAgent(engine);
                     if (targetAgent == null)
@@ -139,6 +174,16 @@ public class RunCommand implements Callable<Integer> {
                     System.out.printf("📊 执行了 %d 步，耗时 %dms，%s%n",
                             autoResult.getTotalSteps(), autoDuration,
                             autoResult.isCompleted() ? "✅ 目标已完成" : "⚠️ " + autoResult.getTerminationReason());
+                    return 0;
+                }
+
+                if (interactive) {
+                    String targetAgent = resolveTargetAgent(engine);
+                    if (targetAgent == null)
+                        return 1;
+
+                    InteractiveSession session = new InteractiveSession(engine, targetAgent);
+                    session.run();
                     return 0;
                 }
 
@@ -197,5 +242,16 @@ public class RunCommand implements Callable<Integer> {
             return null;
         }
         return agentNames.iterator().next();
+    }
+
+    private boolean isAutonomousAgentConfigured(AgentDslEngine engine) {
+        var registry = engine.getRegistry();
+        for (String name : registry.getAgentNames()) {
+            var instance = registry.get(name);
+            if (instance != null && instance.getSpec().getAutonomous() != null) {
+                return true;
+            }
+        }
+        return false;
     }
 }

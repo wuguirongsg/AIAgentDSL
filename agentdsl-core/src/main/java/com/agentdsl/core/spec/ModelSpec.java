@@ -1,5 +1,8 @@
 package com.agentdsl.core.spec;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * LLM 模型配置规范。
  * 对应 DSL 中的 model { ... } 块。
@@ -14,6 +17,7 @@ public class ModelSpec {
     private Double topP = 1.0;
     private Integer maxTokens = 2048;
     private Integer timeout = 60;
+    private Map<String, Object> customSettings = new HashMap<>();
 
     // --- Getters & Setters ---
 
@@ -79,6 +83,18 @@ public class ModelSpec {
 
     public void setTimeout(Integer timeout) {
         this.timeout = timeout;
+    }
+
+    public Map<String, Object> getCustomSettings() {
+        return customSettings;
+    }
+
+    public void setCustomSettings(Map<String, Object> customSettings) {
+        this.customSettings = customSettings;
+    }
+
+    public void addCustomSetting(String key, Object value) {
+        this.customSettings.put(key, value);
     }
 
     @Override

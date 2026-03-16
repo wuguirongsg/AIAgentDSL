@@ -30,4 +30,18 @@ public interface UserInteraction {
      * @param message 要显示的消息
      */
     void showProgress(String message);
+
+    String readGoal();
+
+    void showResult(AutonomousResult result);
+
+    void showWelcome(String agentName);
+
+    void showGoodbye();
+
+    boolean isExitCommand(String input);
+
+    boolean isHelpCommand(String input);
+
+    void showHelp();
 }
