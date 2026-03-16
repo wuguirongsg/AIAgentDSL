@@ -987,8 +987,9 @@ agent('research-assistant') {
     }
 
     autonomous {
-        execution_mode 'plan'   // 'plan'（规划后确认执行）或 'fast'（直接执行）
-        max_steps 10            // 超过 10 步后暂停询问用户
+        execution_mode 'plan'       // 'plan'（规划后确认执行）或 'fast'（直接执行）
+        max_steps 10                // 超过 10 步后暂停询问用户
+        auto_discover_mcp true      // Agent 未配置工具时，自动从 MCP 仓库发现匹配工具（可选）
     }
 
     tools {
@@ -1026,7 +1027,49 @@ agent('research-assistant') {
 # 是否确认执行？[Y/n]:
 ```
 
-### 10.4 max_steps 熔断机制
+### 10.4 MCP 自动发现（auto_discover_mcp）
+
+当 Agent 的 `autonomous` 块中配置了 `auto_discover_mcp true` 时，如果 Agent 没有预配置任何工具，系统会自动从 MCP 仓库中搜索并挂载匹配任务目标的工具。
+
+**使用场景**：
+- 不确定需要哪些工具，希望 Agent 自主判断
+- 任务目标包含明确的工具需求（如"使用 playwright 访问网页"）
+- 快速原型验证，不想手动配置 tools
+
+**示例**：
+
+```groovy
+agent('dynamic-tool-agent') {
+    model {
+        provider 'openai'
+        modelName 'gpt-4'
+    }
+
+    autonomous {
+        execution_mode 'fast'
+        max_steps 15
+        auto_discover_mcp true   // 开启 MCP 自动发现
+    }
+
+    // 注意：tools 块未配置任何工具
+
+    systemPrompt '你是一个通用任务助手，根据用户需求自动选择合适的工具完成任务。'
+}
+```
+
+**执行流程**：
+
+```
+1. 用户: --autonomous "搜索 GitHub 上 agentdsl 项目的最新提交"
+2. Agent 发现自身无工具 → 触发 MCP 自动发现
+3. 从 MCP 仓库搜索匹配 "GitHub" 和 "搜索" 的工具
+4. 自动挂载 github-mcp-server
+5. 使用 github_search_commits 工具完成任务
+```
+
+> **注意**：自动发现每轮最多执行 1 次（避免无限循环），且仅在没有配置任何工具时触发。如果 Agent 已配置 tools，则不会触发自动发现。
+
+### 10.5 max_steps 熔断机制
 
 当自主循环执行步数超过 `max_steps` 时，系统自动暂停并询问：
 
@@ -1037,7 +1080,7 @@ agent('research-assistant') {
 是否继续执行？[Y=继续 / N=中止 / S=显示当前结果]:
 ```
 
-### 10.5 ReAct 执行流程
+### 10.6 ReAct 执行流程
 
 ```
 用户输入目标

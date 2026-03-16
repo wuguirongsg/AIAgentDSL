@@ -174,6 +174,44 @@ AutonomousExecutor.execute(instance, userGoal)
   → 输出: AutonomousResult
 ```
 
+### 4.3 MCP 自动发现机制（auto_discover_mcp）
+
+当 Agent 配置 `auto_discover_mcp true` 时，AutonomousExecutor 在启动 ReAct 循环前会尝试从 MCP 仓库动态发现并挂载工具。
+
+**触发条件**：
+1. Agent 的 `autonomous` 块中设置了 `auto_discover_mcp true`
+2. Agent 当前**未配置任何工具**（`tools.isEmpty()`）
+3. 当前任务会话中**尚未执行过自动发现**（每会话最多 1 次主动发现）
+
+**执行流程**：
+
+```
+AutonomousExecutor.executeReActLoop()
+  ├── 检查 tools.isEmpty() && autoDiscoverMcp
+  │   └── 是 → AgentRegistry.tryAutoDiscoverAndAttachTool(goal)
+  │       ├── 遍历所有已注册的 MCP Server
+  │       ├── 使用 LLM 评估 server 的工具是否与 goal 匹配
+  │       │   └── 提示词: "任务目标: {goal}, 工具列表: [...], 是否相关?"
+  │       └── 若匹配 → 挂载该 server 到当前 Agent
+  │           └── tools = Agent.getToolSpecifications() (更新)
+  ├── 进入正常 ReAct 循环
+  └── 若执行中遇到未识别的工具名
+      └── 被动发现: tryAutoDiscoverAndAttachTool(toolName, goal)
+          └── 按工具名精确匹配，尝试动态挂载
+```
+
+**主动发现 vs 被动发现**：
+
+| 类型 | 触发时机 | 匹配方式 | 次数限制 |
+|------|---------|---------|---------|
+| **主动发现** | ReAct 循环开始前 | 基于 goal 语义匹配 | 每会话 1 次 |
+| **被动发现** | 工具执行时遇到未识别工具 | 按 toolName 精确匹配 | 每轮 1 次 |
+
+**安全机制**：
+- 即使自动发现失败，Agent 仍会以无工具模式继续执行（降级处理）
+- 已配置 tools 的 Agent 不会触发自动发现（避免覆盖用户配置）
+- 发现过程有日志输出：`🔍 正在从 MCP 仓库中自动发现可用工具...`
+
 ---
 
 ## 5. 各模块详细说明

@@ -544,7 +544,7 @@ untilClause     ::= "until" CLOSURE ;
 
 (* === Autonomous 块 (v1.4.0) === *)
 autonomousBlock  ::= "autonomous" "{" { autonomousProp } "}" ;
-autonomousProp   ::= "execution_mode" STRING | "max_steps" INTEGER ;
+autonomousProp   ::= "execution_mode" STRING | "max_steps" INTEGER | "auto_discover_mcp" BOOLEAN ;
 
 (* === 基础类型 === *)
 STRING           ::= '"' { character } '"' ;
@@ -1134,8 +1134,9 @@ agent("research-assistant") {
     }
 
     autonomous {
-        execution_mode "plan"   // 先生成计划，用户确认后执行
-        max_steps 8             // 最多自主执行 8 步
+        execution_mode "plan"       // 先生成计划，用户确认后执行
+        max_steps 8                 // 最多自主执行 8 步
+        auto_discover_mcp true      // Agent 未配置工具时，自动从 MCP 仓库发现匹配工具
     }
 
     tools {
