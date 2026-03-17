@@ -174,7 +174,9 @@ model {
 | `include` | 引用已注册的工具 或 内置工具 | `include "toolName"`   |
 | `tool`    | 内联定义一个工具             | `tool("name") { ... }` |
 
-> v1.3.0 系统内置工具预注册名已扩充覆盖全系能力：`http_get`, `http_post`, `json_parse`, `json_query`, `file_read`, `file_write`, `excel_read`, `excel_write`, `pdf_read`, `image_recognize`, `cmd_execute`, `db_query`, `db_execute`, `web_search`。均可直接使用 `include` 引入。
+> v1.3.0 系统内置工具预注册名已扩充覆盖全系能力：`http_get`, `http_post`, `json_parse`, `json_query`, `file_read`, `file_write`, `excel_read`, `excel_write`, `pdf_read`, `image_recognize`, `cmd_execute`, `db_query`, `db_execute`, `web_search`。
+
+> v1.4.0 新增代码执行工具：`groovy_execute`（Groovy 代码执行）、`shell_script_run`（Shell/Bat/PowerShell 脚本执行）、`python_run`（Python 代码执行）。
 
 #### Tool 定义关键字（`tool { }` 内部，v1.2增强）
 
@@ -1345,7 +1347,7 @@ ${analysis}
 | **v1.1**         | 工作流语法重设计、`@AgentTool` 注解发现、热加载、安全沙箱增强                                  | 向后兼容   |
 | **v1.2**         | MCP 组网、Skill/提示词注入、内建 Tool 强化、沙箱白名单                                         | 向后兼容   |
 | **v1.3**         | 数据基础设施（datasource）、扩充内置工具、browser_use、搜索引擎配置、`--debug` 全链路追踪      | 向后兼容   |
-| **v1.4.0**（当前）| Autonomous 自主 Agent（ReAct 循环 + max_steps 熔断）、Workflow 直接执行（execute/tool/skill/mcp）| 向后兼容   |
+| **v1.4.0**（当前）| Autonomous 自主 Agent（ReAct 循环 + max_steps 熔断）、Workflow 直接执行（execute/tool/skill/mcp）、代码执行工具（groovy_execute、shell_script_run、python_run）| 向后兼容   |
 | **v2.0**         | 事件驱动多 Agent 协作、`event` / `subscribe` 关键字                                            | 可能不兼容 |
 
 > [!NOTE]

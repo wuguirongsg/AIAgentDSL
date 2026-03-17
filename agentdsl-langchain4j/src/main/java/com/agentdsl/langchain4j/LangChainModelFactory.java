@@ -217,31 +217,41 @@ public class LangChainModelFactory {
 
         // 处理 Gemini 特定参数
         Map<String, Object> settings = spec.getCustomSettings();
-        
+
         // seed 参数 - 随机种子
         if (settings.containsKey("seed")) {
             builder.seed(toInteger(settings.get("seed")));
         }
-        
+
         // frequencyPenalty 参数 - 频率惩罚
         if (settings.containsKey("frequencyPenalty")) {
             builder.frequencyPenalty(toDouble(settings.get("frequencyPenalty")));
         }
-        
+
         // presencePenalty 参数 - 存在惩罚
         if (settings.containsKey("presencePenalty")) {
             builder.presencePenalty(toDouble(settings.get("presencePenalty")));
         }
-        
-        // returnThinking 参数 - 是否返回思考过程
+
+        // returnThinking + sendThinking：Gemini 思考模型的 thought_signature 双向传递机制。
+        //
+        // 工作原理（两个参数缺一不可）：
+        //   1. returnThinking=true：解析响应时，把 thought_signature 存入 AiMessage#attributes()
+        //   2. sendThinking=true  ：构建下一轮请求时，从 AiMessage#attributes() 取出签名并回传
+        //
+        // 任一为 false/null，签名链路断裂 → Gemini API 返回 400 INVALID_ARGUMENT。
+        // 对不支持思考的模型，两个参数均无副作用；可通过 settings { returnThinking false; sendThinking false } 显式关闭。
+        boolean returnThinking = true;
         if (settings.containsKey("returnThinking")) {
-            builder.returnThinking(toBoolean(settings.get("returnThinking")));
+            returnThinking = toBoolean(settings.get("returnThinking"));
         }
-        
-        // sendThinking 参数 - 是否发送思考
+        builder.returnThinking(returnThinking);
+
+        boolean sendThinking = true;
         if (settings.containsKey("sendThinking")) {
-            builder.sendThinking(toBoolean(settings.get("sendThinking")));
+            sendThinking = toBoolean(settings.get("sendThinking"));
         }
+        builder.sendThinking(sendThinking);
         
         // stopSequences 参数 - 停止序列
         if (settings.containsKey("stopSequences")) {
