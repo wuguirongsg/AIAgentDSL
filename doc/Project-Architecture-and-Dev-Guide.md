@@ -62,17 +62,18 @@
 
 ## 3. 模块总览与依赖关系
 
-### 3.1 七大模块职责一句话总结
+### 3.1 八大模块职责一句话总结
 
 | 模块 | 一句话职责 |
 |------|-----------|
 | **agentdsl-core** | DSL 语法定义层 — Groovy Delegate + Java Spec 模型 + 注解 + 异常 + 指标 |
-| **agentdsl-compiler** | DSL 编译与校验 — 把 `.agent.groovy` 解析为 Spec 对象并进行语义校验 |
+| **agentdsl-compiler** | DSL 编译与校验 — 把`.agent.groovy` 解析为 Spec 对象并进行语义校验 |
 | **agentdsl-langchain4j** | LangChain4j 桥接层 — 把 Spec 转换为 ChatModel / ChatMemory / ContentRetriever / ToolExecutor |
 | **agentdsl-tools** | 内置工具库 — HTTP、JSON、文件、Excel、PDF、图片、命令行、数据库、搜索、浏览器 |
 | **agentdsl-mcp** | MCP 桥接层 — 把 MCP Server 的工具转换为 LangChain4j ToolSpecification + ToolExecutor |
 | **agentdsl-runtime** | 执行引擎 — Agent 生命周期管理、ReAct 循环、工作流编排、自主模式、热加载 |
 | **agentdsl-cli** | 命令行入口 — run / validate / list 三个子命令 |
+| **agentdsl-spring-boot-starter** | Spring Boot 集成 — 自动配置、REST API、脚本扫描、热加载 |
 
 ### 3.2 模块依赖关系图
 
@@ -91,6 +92,14 @@
                           │
                           ▼
                      agentdsl-core
+     
+     agentdsl-spring-boot-starter
+              │
+              ▼
+        agentdsl-runtime
+              │
+              ▼
+        (Spring Boot 3.x)
 ```
 
 **依赖规则**：
@@ -99,6 +108,7 @@
 - `agentdsl-langchain4j`、`agentdsl-tools`、`agentdsl-mcp` 分别依赖 `core`
 - `agentdsl-runtime` 聚合所有子模块，是执行入口
 - `agentdsl-cli` 依赖 `runtime` + `compiler` + `core`
+- `agentdsl-spring-boot-starter` 依赖 `runtime` + `compiler` + `core`，提供 Spring Boot 自动配置
 
 ---
 
@@ -548,6 +558,65 @@ register(AgentSpec)
 
 ---
 
+### 5.8 agentdsl-spring-boot-starter
+
+> **定位**: Spring Boot 自动配置模块，提供开箱即用的集成体验。
+
+**源码路径**: `agentdsl-spring-boot-starter/src/main/java/com/agentdsl/springboot/`
+
+| 类 | 职责 |
+|----|------|
+| **AgentDslAutoConfiguration** | Spring Boot 自动配置，创建 AgentDslEngine Bean |
+| **AgentDslProperties** | YAML 配置映射，支持 `agentdsl.*` 前缀配置 |
+| **AgentScanner** | DSL 脚本目录扫描与加载 |
+| **AgentDslRestController** | REST API 端点自动注册 |
+
+**集成方式**:
+
+| 场景 | 集成方式 | 模块 |
+|------|---------|------|
+| 一般 Java 项目 | 直接使用 `new AgentDslEngine()` | agentdsl-runtime |
+| Spring Framework | XML/Java Config 注册 Bean | agentdsl-runtime |
+| Spring Boot | 添加 Starter 依赖，自动配置 | agentdsl-spring-boot-starter |
+
+**配置属性**:
+
+| 属性 | 说明 | 默认值 |
+|------|------|--------|
+| `agentdsl.enabled` | 是否启用 | `true` |
+| `agentdsl.scripts-location` | DSL 脚本目录 | `classpath:agents/` |
+| `agentdsl.sandbox` | 沙箱模式 | `false` |
+| `agentdsl.hot-reload` | 热加载 | `false` |
+| `agentdsl.model.provider` | 默认模型提供商 | `gemini` |
+| `agentdsl.model.model-name` | 默认模型名称 | `gemini-2.0-flash` |
+| `agentdsl.api.enabled` | REST API 开关 | `true` |
+| `agentdsl.api.base-path` | REST API 基础路径 | `/api` |
+
+**REST API 端点**:
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/agents` | GET | 列出所有 Agent |
+| `/api/agents/{name}/chat` | POST | 与 Agent 对话 |
+| `/api/workflows` | GET | 列出所有 Workflow |
+| `/api/workflows/{name}/execute` | POST | 执行 Workflow |
+
+**依赖关系**:
+
+```
+agentdsl-spring-boot-starter
+    ├── agentdsl-runtime
+    ├── agentdsl-compiler
+    └── agentdsl-core
+```
+
+**扩展要点**:
+- 自定义 Agent 扫描策略 → 实现 `AgentScannerCustomizer` 接口
+- 自定义 REST 端点 → 继承 `AgentDslRestController` 或提供自己的 Controller
+- 禁用自动 REST 端点 → `agentdsl.api.enabled=false`
+
+---
+
 ## 6. 核心设计模式
 
 | 设计模式 | 应用位置 | 说明 |
@@ -665,13 +734,17 @@ AgentDSL/
 ├── agentdsl-cli/                 # [CLI] 命令行入口
 │   └── src/main/java/.../        #   AgentDslCli, RunCommand, ValidateCommand, ListCommand
 │
+├── agentdsl-spring-boot-starter/ # [Starter] Spring Boot 自动配置
+│   └── src/main/java/.../        #   AgentDslAutoConfiguration, AgentDslProperties, AgentScanner
+│
 ├── examples/                     # 示例脚本
 │   ├── simple-chat.agent.groovy
 │   ├── tool-agent.agent.groovy
 │   ├── workflow-pipeline.agent.groovy
 │   ├── mcp-github.agent.groovy
 │   ├── autonomous-agent.agent.groovy
-│   └── ... (19 个示例)
+│   ├── spring-boot-demo/         # Spring Boot 集成示例
+│   └── ... (20+ 示例)
 │
 ├── doc/                          # 文档
 │   ├── lang-spec/                #   语言规范 (v1.0 ~ v1.4)
@@ -706,6 +779,9 @@ AgentDSL/
 | **添加新的搜索 Provider** | `agentdsl-tools/builtin/WebSearchTool.java` |
 | **添加新的记忆类型** | `agentdsl-langchain4j/LangChainMemoryFactory.java` |
 | **修改工具参数校验** | `agentdsl-langchain4j/LangChainToolBridge.java` → `validateParameters()` |
+| **自定义 Spring Boot 配置** | `agentdsl-spring-boot-starter/AgentDslProperties.java` |
+| **添加自定义 REST 端点** | `agentdsl-spring-boot-starter/web/` 新建 Controller |
+| **自定义脚本扫描逻辑** | `agentdsl-spring-boot-starter/AgentScanner.java` |
 
 ---
 

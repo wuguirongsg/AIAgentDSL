@@ -10,7 +10,7 @@
 1. [快速开始](#1-快速开始)
 2. [核心概念](#2-核心概念)
 3. [第一个 Agent：Hello World](#3-第一个-agenthello-world)
-4. [给 Agent 添加工具 (Tools)](#4-给-agent-添加工具-tools)
+4. [给 Agent 添加工具(Tools)](#4-给-agent-添加工具-tools)
 5. [使用 Workflow 编排多 Agent](#5-使用-workflow-编排多-agent)
 6. [工作流进阶：并行、条件、循环](#6-工作流进阶并行条件循环)
 7. [Workflow 直接执行模式（v1.4.0）](#7-workflow-直接执行模式v140)
@@ -21,7 +21,8 @@
     11.1 [记忆 (Memory)](#111-记忆-memory)
     11.2 [安全护栏 (Guardrails)](#112-安全护栏-guardrails)
 12. [CLI 命令行参考](#12-cli-命令行参考)
-13. [常见问题 (FAQ)](#13-常见问题-faq)
+13. [Spring Boot 集成](#13-spring-boot-集成)
+14. [常见问题 (FAQ)](#14-常见问题-faq)
 
 ---
 
@@ -1235,7 +1236,216 @@ agent('safe-agent') {
 
 ---
 
-## 13. 常见问题 (FAQ)
+## 13. Spring Boot 集成
+
+AgentDSL 提供 Spring Boot Starter，实现开箱即用的自动配置集成。
+
+### 13.1 快速开始
+
+#### 添加依赖
+
+**Maven:**
+```xml
+<dependency>
+    <groupId>com.agentdsl</groupId>
+    <artifactId>agentdsl-spring-boot-starter</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+</dependency>
+```
+
+**Gradle:**
+```kotlin
+implementation("com.agentdsl:agentdsl-spring-boot-starter:0.1.0-SNAPSHOT")
+```
+
+#### 配置 application.yml
+
+```yaml
+agentdsl:
+  enabled: true
+  scripts-location: classpath:agents/
+  sandbox: false
+  hot-reload: false  # 生产环境建议关闭
+  
+  # 全局模型默认值
+  model:
+    provider: gemini
+    model-name: gemini-2.0-flash
+    temperature: 0.7
+    max-tokens: 4096
+  
+  # REST API 配置
+  api:
+    enabled: true
+    base-path: /api
+```
+
+#### 创建 DSL 脚本
+
+在 `src/main/resources/agents/` 目录下创建 `.agent.groovy` 文件：
+
+```groovy
+// demo.agent.groovy
+agent("chat-assistant") {
+    description "聊天助手"
+    
+    model {
+        provider "gemini"
+        modelName "gemini-2.0-flash"
+    }
+    
+    systemPrompt "你是一个友好的AI助手。"
+}
+```
+
+#### 启动应用
+
+```java
+@SpringBootApplication
+public class MyApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(MyApplication.class, args);
+    }
+}
+```
+
+启动后，AgentDSL 会自动：
+1. 扫描 `classpath:agents/` 目录下的 DSL 脚本
+2. 注册所有 Agent 和 Workflow
+3. 暴露 REST API 端点
+
+### 13.2 配置选项
+
+| 配置项 | 说明 | 默认值 |
+|--------|------|--------|
+| `agentdsl.enabled` | 是否启用 AgentDSL | `true` |
+| `agentdsl.scripts-location` | DSL 脚本目录 | `classpath:agents/` |
+| `agentdsl.sandbox` | 沙箱模式 | `false` |
+| `agentdsl.hot-reload` | 热加载（开发模式） | `false` |
+| `agentdsl.model.provider` | 默认模型提供商 | `gemini` |
+| `agentdsl.model.model-name` | 默认模型名称 | `gemini-2.0-flash` |
+| `agentdsl.model.temperature` | 默认温度 | `0.7` |
+| `agentdsl.model.max-tokens` | 默认最大 Token | `4096` |
+| `agentdsl.api.enabled` | 是否启用 REST API | `true` |
+| `agentdsl.api.base-path` | REST API 基础路径 | `/api` |
+
+### 13.3 注入使用
+
+```java
+@Service
+public class MyService {
+    private final AgentDslEngine engine;
+    
+    public MyService(AgentDslEngine engine) {
+        this.engine = engine;
+    }
+    
+    public String chat(String message) {
+        return engine.chat("my-agent", message);
+    }
+    
+    public WorkflowResult runWorkflow(String input) {
+        return engine.executeWorkflow("my-workflow", input);
+    }
+}
+```
+
+### 13.4 REST API 端点
+
+Starter 自动暴露以下 REST 端点：
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `GET /api/agents` | GET | 列出所有 Agent |
+| `POST /api/agents/{name}/chat` | POST | 与 Agent 对话 |
+| `GET /api/workflows` | GET | 列出所有 Workflow |
+| `POST /api/workflows/{name}/execute` | POST | 执行 Workflow |
+
+**示例请求：**
+```bash
+# 与 Agent 对话
+curl -X POST http://localhost:8080/api/agents/chat-assistant/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "你好，介绍一下你自己"}'
+
+# 执行 Workflow
+curl -X POST http://localhost:8080/api/workflows/translation-pipeline/execute \
+  -H "Content-Type: application/json" \
+  -d '{"input": "Hello World"}'
+```
+
+### 13.5 非 Spring Boot 项目集成
+
+#### 一般 Java 项目
+
+```java
+public class MyApp {
+    public static void main(String[] args) {
+        AgentDslEngine engine = new AgentDslEngine();
+        
+        // 从文件加载 DSL 脚本
+        engine.loadFile(Paths.get("agents/my-agent.agent.groovy"));
+        
+        // 调用 Agent
+        String response = engine.chat("my-agent", "Hello");
+        System.out.println(response);
+        
+        // 关闭引擎
+        engine.close();
+    }
+}
+```
+
+**依赖：**
+```xml
+<dependency>
+    <groupId>com.agentdsl</groupId>
+    <artifactId>agentdsl-runtime</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+</dependency>
+```
+
+#### Spring Framework（非 Boot）
+
+```java
+@Configuration
+public class AgentDslConfig {
+    
+    @Bean(destroyMethod = "close")
+    public AgentDslEngine agentDslEngine() throws IOException {
+        AgentDslEngine engine = new AgentDslEngine();
+        Path scriptsPath = Paths.get("classpath:agents/");
+        engine.loadFile(scriptsPath);
+        return engine;
+    }
+}
+
+@Service
+public class MyService {
+    @Autowired
+    private AgentDslEngine engine;
+    
+    public String chat(String message) {
+        return engine.chat("my-agent", message);
+    }
+}
+```
+
+### 13.6 热加载（开发模式）
+
+在开发环境中启用热加载，脚本文件变更会自动重新加载：
+
+```yaml
+agentdsl:
+  hot-reload: true
+  scripts-location: file:src/main/resources/agents/
+```
+
+> **注意：** 热加载仅支持 `file:` 前缀的文件系统路径，不支持 `classpath:` 路径。
+
+---
+
+## 14. 常见问题 (FAQ)
 
 ### Q: 用 `--chat` 时，脚本里的 Workflow 会执行吗？
 
@@ -1334,6 +1544,7 @@ step("classify") {
 | `workflow-direct-execution.agent.groovy`   | execute/tool/skill/mcp 直接执行 + 混合编排            | v1.4.0 |
 | `autonomous-agent.agent.groovy`            | Autonomous 自主 Agent（plan 模式 + fast 模式对比）    | v1.4.0 |
 | `code-executor-demo.agent.groovy`         | 代码执行工具（Groovy/Shell/Python）                   | v1.4   |
+| `spring-boot-demo/`                        | Spring Boot Starter 集成示例                          | v1.5   |
 
 ---
 

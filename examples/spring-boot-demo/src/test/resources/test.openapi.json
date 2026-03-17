@@ -1,0 +1,176 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "默认模块",
+    "description": "",
+    "version": "1.0.0"
+  },
+  "tags": [],
+  "paths": {
+    "/api/demo/chat/chat-assistant": {
+      "post": {
+        "summary": "与指定 Agent 进行对话",
+        "deprecated": false,
+        "description": "",
+        "tags": [],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              },
+              "example": {
+                "message": "你好，我想咨询问题"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                },
+                "example": {
+                  "response": "你好！请问有什么我可以帮到你？ \n",
+                  "agent": "chat-assistant",
+                  "message": "你好，我想咨询问题"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/demo/agents": {
+      "get": {
+        "summary": "列出所有已注册的 Agent",
+        "deprecated": false,
+        "description": "",
+        "tags": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                },
+                "example": {
+                  "agents": [
+                    "translator",
+                    "chat-assistant"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/demo/workflows": {
+      "get": {
+        "summary": "列出所有已注册的 Workflow",
+        "deprecated": false,
+        "description": "",
+        "tags": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                },
+                "example": {
+                  "workflows": [
+                    "translation-pipeline"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/demo/workflow/{workflowName}": {
+      "post": {
+        "summary": "执行指定工作流",
+        "deprecated": false,
+        "description": "",
+        "tags": [],
+        "parameters": [
+          {
+            "name": "workflowName",
+            "in": "path",
+            "description": "",
+            "required": true,
+            "example": "translation-pipeline",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              },
+              "example": {
+                "input": "how are you"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                },
+                "example": {
+                  "success": true,
+                  "workflow": "translation-pipeline",
+                  "output": "以下是一些润色后的翻译，更自然流畅：\n\n*   **你最近怎么样？** (更侧重于询问近况)\n*   **最近好吗？** (更简洁口语化)\n*   **你好啊！** (更轻松的打招呼)\n*   **一切都好吗？** (更关心对方整体状况)\n\n选择哪个取决于你想表达的语气和具体语境。\n",
+                  "input": "how are you"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    }
+  },
+  "components": {
+    "schemas": {},
+    "responses": {},
+    "securitySchemes": {}
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8080/",
+      "description": "本地开发服务器"
+    }
+  ],
+  "security": []
+}

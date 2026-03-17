@@ -2,11 +2,16 @@ version: '3.8'
 
 services:
   agentdsl:
-    build: .
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
     volumes:
       - ../examples:/workspace/examples
       - ../output:/workspace/output
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-    command: [ "run", "examples/hello.agent.groovy", "--message", "Hello, from Docker!" ]
+    # 默认使用 list 命令查看 Agent 定义
+    # 如需运行 Agent，请确保 Ollama 服务可访问，并修改为:
+    # command: [ "run", "examples/hello.agent.groovy", "--message", "Hello, from Docker!" ]
+    command: [ "list", "examples/hello.agent.groovy" ]

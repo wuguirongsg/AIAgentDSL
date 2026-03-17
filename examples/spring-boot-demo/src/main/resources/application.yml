@@ -1,0 +1,31 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: agentdsl-demo
+
+# AgentDSL 配置
+agentdsl:
+  enabled: true
+  scripts-location: classpath:agents/
+  sandbox: false
+  hot-reload: false  # 生产环境建议关闭
+  
+  # 全局模型默认值
+  model:
+    provider: ${LLM_PROVIDER:gemini}
+    model-name: ${LLM_MODEL:gemini-2.0-flash}
+    temperature: 0.7
+    max-tokens: 4096
+  
+  # REST API 配置
+  api:
+    enabled: true
+    base-path: /api
+
+logging:
+  level:
+    com.agentdsl: DEBUG
+    com.agentdsl.springboot: DEBUG
+    com.example.demo: DEBUG

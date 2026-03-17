@@ -59,13 +59,15 @@ public class AgentDslEngine implements AutoCloseable {
     }
 
     /**
-     * 测试用构造函数，允许注入自定义 Registry。
+     * 构造函数，允许注入自定义 Registry。
      */
-    AgentDslEngine(DslCompiler compiler, AgentRegistry registry) {
+    public AgentDslEngine(DslCompiler compiler, AgentRegistry registry) {
         this.compiler = compiler;
         this.registry = registry;
         this.executor = new AgentExecutor(registry);
         this.workflowExecutor = new WorkflowExecutor(executor, registry);
+        this.autonomousExecutor = new AutonomousExecutor(new ConsoleUserInteraction(), this.registry);
+        registerBuiltinTools();
     }
 
     /**
@@ -187,6 +189,7 @@ public class AgentDslEngine implements AutoCloseable {
     @Override
     public void close() {
         registry.closeMcpConnections();
+        registry.closeNativeBrowsers();
         stopWatching();
     }
 
