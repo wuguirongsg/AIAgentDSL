@@ -1,7 +1,7 @@
 # AgentDSL (中文)
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![CI](https://github.com/wuguirong/AgentDSL/actions/workflows/ci.yml/badge.svg)](https://github.com/wuguirong/AgentDSL/actions/workflows/ci.yml)
+[![CI](https://github.com/wuguirongsg/AgentDSL/actions/workflows/ci.yml/badge.svg)](https://github.com/wuguirongsg/AgentDSL/actions/workflows/ci.yml)
 
 > [!NOTE]
 > 🌐 Looking for the English documentation? See [README.md](README.md)

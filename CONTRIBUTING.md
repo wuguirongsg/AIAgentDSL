@@ -40,7 +40,7 @@ AgentDSL requires **Java 17**. We use Gradle for building the project.
 
 ```bash
 # Clone the repo
-git clone https://github.com/wuguirong/AgentDSL.git
+git clone https://github.com/wuguirongsg/AgentDSL.git
 cd AgentDSL
 
 # Build the project
