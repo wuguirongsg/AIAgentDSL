@@ -1,11 +1,11 @@
-# AgentDSL 架构与扩展指南
+# AIAgentDSL 架构与扩展指南
 
 > **文档版本**: v1.1
 > **目标读者**: 核心开发者，贡献者，系统架构师
 
 ## 1. 系统架构概览
 
-AgentDSL 被设计为一个模块化、可扩展且类型安全的 Java 应用 AI Agent 构建框架。其核心理念是上层提供声明式的 DSL，而在底层保持极其严格的工程标准。
+AIAgentDSL 被设计为一个模块化、可扩展且类型安全的 Java 应用 AI Agent 构建框架。其核心理念是上层提供声明式的 DSL，而在底层保持极其严格的工程标准。
 
 ### 1.1 核心模块
 
@@ -38,7 +38,7 @@ AgentDSL 被设计为一个模块化、可扩展且类型安全的 Java 应用 A
 
 ## 2. SPI 扩展指南
 
-AgentDSL 深度依赖服务提供者接口 (Service Provider Interface, SPI) 模式，允许企业级用户在不修改核心框架代码的情况下注入自定义逻辑。
+AIAgentDSL 深度依赖服务提供者接口 (Service Provider Interface, SPI) 模式，允许企业级用户在不修改核心框架代码的情况下注入自定义逻辑。
 
 ### 2.1 扩展大模型接口 (Model Provider)
 
@@ -99,7 +99,7 @@ agentRegistry.registerSkill(mySkillSpec);
 
 ## 3. 安全架构设计 (The Sandbox)
 
-由于 AgentDSL 使用了基于 Groovy 的动态解析底层，必须纳入严格的安全沙箱机制，以防止存在恶意意图或误操作的脚本对宿主系统造成危害。
+由于 AIAgentDSL 使用了基于 Groovy 的动态解析底层，必须纳入严格的安全沙箱机制，以防止存在恶意意图或误操作的脚本对宿主系统造成危害。
 
 *   **无文件系统访问权**: `java.io.*` 和 `java.nio.file.*` 在系统 AST 级别的自定义配置中被显式禁用了。
 *   **无系统进程权**: `java.lang.System`, `Runtime` 和 `ProcessBuilder` 被彻底拉黑。
@@ -108,4 +108,4 @@ agentRegistry.registerSkill(mySkillSpec);
 
 ## 4. 未来路线图规划
 
-请参阅 `AgentDSL 迭代开发计划2.0.md` 中关于架构即将到来的更新路线图细节。其中包括了对 Project Loom(虚拟线程、高并发工作流) 体系的集成，以及面向 Autonomous Agent 生成的自主循环计划机制升级。
+请参阅 `AIAgentDSL 迭代开发计划2.0.md` 中关于架构即将到来的更新路线图细节。其中包括了对 Project Loom(虚拟线程、高并发工作流) 体系的集成，以及面向 Autonomous Agent 生成的自主循环计划机制升级。

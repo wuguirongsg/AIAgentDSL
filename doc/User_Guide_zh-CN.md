@@ -1,7 +1,7 @@
-# AgentDSL 开发者入门指南
+# AIAgentDSL 开发者入门指南
 
-> **文档版本**: v1.4 · 适用 AgentDSL v1.4.0  
-> **目标读者**: 初次使用 AgentDSL 的开发者
+> **文档版本**: v1.4 · 适用 AIAgentDSL v1.4.0  
+> **目标读者**: 初次使用 AIAgentDSL 的开发者
 
 ---
 
@@ -53,7 +53,7 @@ git clone <repo-url> && cd AgentDSL
 
 ### 1.3 配置 API Key
 
-AgentDSL 通过环境变量读取 API Key，根据你使用的模型提供商设置对应变量：
+AIAgentDSL 通过环境变量读取 API Key，根据你使用的模型提供商设置对应变量：
 
 ```bash
 # Gemini (Google)
@@ -66,7 +66,7 @@ export OPENAI_API_KEY=your-key
 # 无需额外配置
 ```
 
-> 完整的 Provider 列表见 [语言规范 §6](lang-spec/AgentDSL-Language-Spec-v1.4.md)，支持 OpenAI、Ollama、Gemini、Claude、DeepSeek、Kimi、通义千问、豆包、智谱、MiniMax 等。
+> 完整的 Provider 列表见 [语言规范 §6](lang-spec/AIAgentDSL-Language-Spec-v1.4)，支持 OpenAI、Ollama、Gemini、Claude、DeepSeek、Kimi、通义千问、豆包、智谱、MiniMax 等。
 
 ### 1.4 运行第一个脚本
 
@@ -78,7 +78,7 @@ export OPENAI_API_KEY=your-key
 
 ## 2. 核心概念
 
-在编写任何脚本之前，先理解 AgentDSL 的 **四个核心构件**：
+在编写任何脚本之前，先理解 AIAgentDSL 的 **四个核心构件**：
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -128,7 +128,7 @@ workflow('myFlow') { steps { step('s1') { agent 'agentA' } } }
 
 ### 2.2 执行模式
 
-AgentDSL 支持三种 CLI 执行模式：
+AIAgentDSL 支持三种 CLI 执行模式：
 
 | 模式                 | CLI 参数                               | 说明                                            |
 | -------------------- | -------------------------------------- | ----------------------------------------------- |
@@ -259,7 +259,7 @@ agent('gemini-agent') {
 
 ### 4.1 使用内置工具
 
-AgentDSL 预置了涵盖多种不同数据形态维度的 14 个基础工具，直接 `include` 即可：
+AIAgentDSL 预置了涵盖多种不同数据形态维度的 14 个基础工具，直接 `include` 即可：
 
 | 内置工具          | 功能                            |
 | ----------------- | ------------------------------- |
@@ -959,7 +959,7 @@ agent('multi-tool') {
 ### 8.3 MCP 工作原理
 
 ```
-AgentDSL (MCP Client)                    MCP Server (外部进程)
+AIAgentDSL (MCP Client)                    MCP Server (外部进程)
     │                                         │
     │── 启动进程 (npx ...) ─────────────────▶ │
     │◀─ 握手 + 返回 toolSpecifications ──────│
@@ -1548,4 +1548,4 @@ step("classify") {
 
 ---
 
-> 📖 **深入了解**：[AgentDSL 语言定义规范 v1.4.0](lang-spec/AgentDSL-Language-Spec-v1.4.md) · [架构与扩展指南](Architecture_Guide_zh-CN.md)
+> 📖 **深入了解**：[AgentDSL 语言定义规范 v1.4.0](lang-spec/AIAgentDSL-Language-Spec-v1.4) · [架构与扩展指南](Architecture_Guide_zh-CN.md)

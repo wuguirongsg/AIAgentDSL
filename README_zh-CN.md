@@ -1,14 +1,14 @@
-# AgentDSL (中文)
+# AIAgentDSL (中文)
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![CI](https://github.com/wuguirongsg/AgentDSL/actions/workflows/ci.yml/badge.svg)](https://github.com/wuguirongsg/AgentDSL/actions/workflows/ci.yml)
+[![CI](https://github.com/wuguirongsg/AIAgentDSL/actions/workflows/ci.yml/badge.svg)](https://github.com/wuguirongsg/AgentDSL/actions/workflows/ci.yml)
 
 > [!NOTE]
 > 🌐 Looking for the English documentation? See [README.md](README.md)
 
-**AgentDSL** 是 Java 生态下的企业级 AI Agent 领域特定语言 (DSL)。它将复杂的 AI 逻辑与健壮的企业级开发最佳实践相结合，让 Java 开发者也能像使用 Python 的 LangChain / CrewAI 一样优雅地编排 Agent，同时保持类型安全、模块化和极佳的可观测性。
+**AIAgentDSL** 是 Java 生态下的企业级 AI Agent 领域特定语言 (DSL)。它将复杂的 AI 逻辑与健壮的企业级开发最佳实践相结合，让 Java 开发者也能像使用 Python 的 LangChain / CrewAI 一样优雅地编排 Agent，同时保持类型安全、模块化和极佳的可观测性。
 
-### 为什么选择 AgentDSL？
+### 为什么选择 AIAgentDSL？
 在充斥着 Python AI 框架的今天，Java 开发者（尤其是企业级软件、SaaS 开发者）迫切需要一套**符合 Java 工程习惯**的标准。使用 AgentDSL，相比纯写 LangChain4j 代码可以显著减少工程代码量（在多 Agent 编排场景下通常可减少 60% 以上）。
 
 ### 🚀 核心杀手锏
@@ -42,7 +42,7 @@ agent("hello-bot") {
 
 ### 📚 核心文档
 - [🚀 开发者入门指南](doc/User_Guide_zh-CN.md)：最通俗易懂的快速上手教程。
-- [📖 AgentDSL 语言规范 v1.4.0](doc/lang-spec/AgentDSL-Language-Spec-v1.4.md)：权威的语法、关键字与语义定义标准。
+- [📖 AgentDSL 语言规范 v1.4.0](doc/lang-spec/AIAgentDSL-Language-Spec-v1.4)：权威的语法、关键字与语义定义标准。
 - [🏗️ 架构与扩展指南](doc/Architecture_Guide_zh-CN.md)：详述如何通过 SPI 扩展自定义大模型和技能库。
 
 ### 🤝 参与共建

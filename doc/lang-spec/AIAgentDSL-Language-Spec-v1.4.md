@@ -1,6 +1,6 @@
-# AgentDSL 语言定义规范 v1.4.0
+# AIAgentDSL 语言定义规范 v1.4.0
 
-> 本文档是 AgentDSL 的正式语言规范，定义了 DSL 的语法结构、关键字、类型系统和语义规则。
+> 本文档是 AIAgentDSL 的正式语言规范，定义了 DSL 的语法结构、关键字、类型系统和语义规则。
 > 所有 DSL 引擎的实现必须遵循本规范。
 
 > [!NOTE]
@@ -60,7 +60,7 @@
 
 ### 2.1 关键字（Keywords）
 
-AgentDSL 的关键字分为以下层级：
+AIAgentDSL 的关键字分为以下层级：
 
 #### 顶层关键字（Top-Level Keywords）
 

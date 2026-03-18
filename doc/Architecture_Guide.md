@@ -1,11 +1,11 @@
-# AgentDSL Architecture & Extension Guide
+# AIAgentDSL Architecture & Extension Guide
 
 > **Document Version**: v1.0
 > **Target Audience**: Core developers, Contributors, System Architects
 
 ## 1. System Architecture Overview
 
-AgentDSL is designed as a modular, extensible, and type-safe framework for building AI Agents in Java. The core philosophy is to provide a declarative DSL on top while maintaining strict engineering standards underneath.
+AIAgentDSL is designed as a modular, extensible, and type-safe framework for building AI Agents in Java. The core philosophy is to provide a declarative DSL on top while maintaining strict engineering standards underneath.
 
 ### 1.1 Core Modules
 
@@ -38,7 +38,7 @@ The project is structured into several highly cohesive modules:
 
 ## 2. SPI Extension Guide
 
-AgentDSL is built heavily on the Service Provider Interface (SPI) pattern, allowing enterprise users to inject custom logic without modifying the core framework.
+AIAgentDSL is built heavily on the Service Provider Interface (SPI) pattern, allowing enterprise users to inject custom logic without modifying the core framework.
 
 ### 2.1 Extending the Model Provider
 
@@ -108,4 +108,4 @@ Because the DSL is Groovy-based, AgentDSL incorporates a strict security sandbox
 
 ## 4. Future Roadmap
 
-See the `AgentDSL 迭代开发计划2.0.md` for upcoming architectural changes, including Project Loom (Virtual Threads) integration for high concurrency workflows and Autonomous Agent planning loops.
+See the `AIAgentDSL 迭代开发计划2.0.md` for upcoming architectural changes, including Project Loom (Virtual Threads) integration for high concurrency workflows and Autonomous Agent planning loops.

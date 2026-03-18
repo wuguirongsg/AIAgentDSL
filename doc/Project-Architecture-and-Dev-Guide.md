@@ -1,4 +1,4 @@
-# AgentDSL 项目架构设计与开发指导
+# AIAgentDSL 项目架构设计与开发指导
 
 > **文档版本**: v1.0 &nbsp;|&nbsp; **最后更新**: 2026-03-17
 >
@@ -31,7 +31,7 @@
 
 ## 1. 项目概述
 
-**AgentDSL** 是 Java 生态下的企业级 AI Agent 领域特定语言（DSL）。开发者通过编写 `.agent.groovy` 脚本，以声明式方式定义 Agent、工具（Tool）、技能（Skill）、工作流（Workflow），由框架负责编译、校验、注册并驱动 LangChain4j 执行。
+**AIAgentDSL** 是 Java 生态下的企业级 AI Agent 领域特定语言（DSL）。开发者通过编写 `.agent.groovy` 脚本，以声明式方式定义 Agent、工具（Tool）、技能（Skill）、工作流（Workflow），由框架负责编译、校验、注册并驱动 LangChain4j 执行。
 
 核心价值：
 - **声明式 DSL** — 用 Groovy 闭包语法描述 Agent "是什么"
@@ -694,7 +694,7 @@ agentdsl-spring-boot-starter
 ## 8. 项目目录快速索引
 
 ```
-AgentDSL/
+AIAgentDSL/
 ├── build.gradle.kts              # 根构建文件，定义通用依赖和插件
 ├── settings.gradle.kts           # 列出所有子模块
 ├── gradlew / gradlew.bat         # Gradle Wrapper
