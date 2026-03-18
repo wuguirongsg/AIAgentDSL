@@ -25,6 +25,7 @@ dev/
 dev2/
 /tmp/
 /temp/
+docs
 
 # Configuration
 local.properties
