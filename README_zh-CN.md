@@ -42,7 +42,7 @@ agent("hello-bot") {
 
 ### 📚 核心文档
 - [🚀 开发者入门指南](doc/User_Guide_zh-CN.md)：最通俗易懂的快速上手教程。
-- [📖 AgentDSL 语言规范 v1.4.0](doc/lang-spec/AIAgentDSL-Language-Spec-v1.4)：权威的语法、关键字与语义定义标准。
+- [📖 AgentDSL 语言规范 v1.4.0](doc/lang-spec/AIAgentDSL-Language-Spec-v1.4.md)：权威的语法、关键字与语义定义标准。
 - [🏗️ 架构与扩展指南](doc/Architecture_Guide_zh-CN.md)：详述如何通过 SPI 扩展自定义大模型和技能库。
 
 ### 🤝 参与共建

@@ -42,7 +42,7 @@ export GEMINI_API_KEY="your-key-if-using-gemini"
 
 ### 📚 Documentation
 - [🚀 Developer Quick Start](doc/User_Guide_zh-CN.md) - Best place to start (CN version available).
-- [📖 Language Specification v1.4.0](doc/lang-spec/AIAgentDSL-Language-Spec-v1.4) - Formal grammar and syntax reference.
+- [📖 Language Specification v1.4.0](doc/lang-spec/AIAgentDSL-Language-Spec-v1.4.md) - Formal grammar and syntax reference.
 - [🏗️ Architecture & Extension Guide](doc/Architecture_Guide.md) - Integrating custom models and logic.
 
 ### 🤝 Contributing

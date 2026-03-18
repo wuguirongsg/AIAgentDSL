@@ -93,7 +93,7 @@ Check the `examples` directory for sample agent scripts:
 
 ## Documentation
 
-- [Language Specification](doc/lang-spec/AIAgentDSL-Language-Spec-v1.4)
+- [Language Specification](doc/lang-spec/AIAgentDSL-Language-Spec-v1.4.md)
 - [User Guide (Chinese)](doc/User_Guide_zh-CN.md)
 - [Architecture Guide](doc/Architecture_Guide.md)
 
