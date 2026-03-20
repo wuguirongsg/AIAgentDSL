@@ -180,6 +180,13 @@ public class AgentDslEngine implements AutoCloseable {
     }
 
     /**
+     * 获取自主执行器。
+     */
+    public AutonomousExecutor getAutonomousExecutor() {
+        return autonomousExecutor;
+    }
+
+    /**
      * 获取编译器。
      */
     public DslCompiler getCompiler() {

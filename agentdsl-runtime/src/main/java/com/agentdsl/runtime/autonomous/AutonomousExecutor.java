@@ -6,6 +6,7 @@ import com.agentdsl.core.metrics.DebugTracer;
 import com.agentdsl.core.spec.AutonomousSpec;
 import com.agentdsl.runtime.AgentInstance;
 import com.agentdsl.runtime.AgentRegistry;
+import com.agentdsl.runtime.LlmCallListener;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
@@ -53,6 +54,9 @@ public class AutonomousExecutor {
     private final UserInteraction userInteraction;
     private final AgentRegistry registry;
 
+    /** 可选的 LLM 调用监听器，null 表示不打印（默认）。 */
+    private LlmCallListener llmCallListener;
+
     public AutonomousExecutor(UserInteraction userInteraction) {
         this(userInteraction, null);
     }
@@ -60,6 +64,14 @@ public class AutonomousExecutor {
     public AutonomousExecutor(UserInteraction userInteraction, AgentRegistry registry) {
         this.userInteraction = userInteraction;
         this.registry = registry;
+    }
+
+    /**
+     * 设置 LLM 调用监听器（例如 --verbose 模式的控制台打印器）。
+     * 传入 null 可关闭监听。
+     */
+    public void setLlmCallListener(LlmCallListener llmCallListener) {
+        this.llmCallListener = llmCallListener;
     }
 
     /**
@@ -302,7 +314,15 @@ public class AutonomousExecutor {
                 if (!tools.isEmpty()) {
                     requestBuilder.toolSpecifications(tools);
                 }
+                // ✅ verbose: 打印发送内容
+                if (llmCallListener != null) {
+                    llmCallListener.onRequest(messages, tools);
+                }
                 response = model.chat(requestBuilder.build());
+                // ✅ verbose: 打印返回内容
+                if (llmCallListener != null) {
+                    llmCallListener.onResponse(response.aiMessage(), System.currentTimeMillis() - stepStart);
+                }
             } catch (Exception e) {
                 log.error("[{}] 步骤 {} 模型调用失败: {}", agentName, stepCount, e.getMessage());
                 stepResults.add(new AutonomousResult.StepResult(

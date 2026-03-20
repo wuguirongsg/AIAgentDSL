@@ -4,6 +4,8 @@
 
 agent('greeter') {
     model {
+        //provider 'gemini'
+        //modelName 'gemini-2.5-flash'
         provider 'ollama'
         modelName 'qwen3.5:latest'
         baseUrl 'http://192.168.10.131:11434'

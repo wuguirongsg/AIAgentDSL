@@ -38,8 +38,19 @@ public class AgentExecutor {
 
     private final AgentRegistry registry;
 
+    /** 可选的 LLM 调用监听器，null 表示不打印（默认）。 */
+    private LlmCallListener llmCallListener;
+
     public AgentExecutor(AgentRegistry registry) {
         this.registry = registry;
+    }
+
+    /**
+     * 设置 LLM 调用监听器（例如 --verbose 模式的控制台打印器）。
+     * 传入 null 可关闭监听。
+     */
+    public void setLlmCallListener(LlmCallListener llmCallListener) {
+        this.llmCallListener = llmCallListener;
     }
 
     /**
@@ -161,9 +172,19 @@ public class AgentExecutor {
                         requestBuilder.toolSpecifications(tools);
                     }
 
+                    // ✅ verbose: 打印发送内容
+                    if (llmCallListener != null) {
+                        llmCallListener.onRequest(messages, tools);
+                    }
+
                     long modelStartTime = System.currentTimeMillis();
                     response = model.chat(requestBuilder.build());
                     long modelDuration = System.currentTimeMillis() - modelStartTime;
+
+                    // ✅ verbose: 打印返回内容
+                    if (llmCallListener != null) {
+                        llmCallListener.onResponse(response.aiMessage(), modelDuration);
+                    }
 
                     if (DebugTracer.isEnabled()) {
                         Map<String, Object> resDetails = new HashMap<>();

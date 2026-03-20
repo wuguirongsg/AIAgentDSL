@@ -1,3 +1,5 @@
+val langchain4jVersion = "1.11.0"
+
 plugins {
     application
     id("com.gradleup.shadow") version "9.0.0-beta12"
@@ -10,6 +12,9 @@ dependencies {
     implementation(project(":agentdsl-compiler"))
     implementation(project(":agentdsl-core"))
 
+    // LlmConversationPrinter 直接使用 langchain4j 消息类型（runtime 使用 implementation 不透传）
+    implementation("dev.langchain4j:langchain4j:$langchain4jVersion")
+
     // picocli — 命令行框架
     implementation("info.picocli:picocli:4.7.6")
     annotationProcessor("info.picocli:picocli-codegen:4.7.6")
@@ -18,6 +23,7 @@ dependencies {
     testImplementation("org.mockito:mockito-core:5.14.2")
     testImplementation("org.mockito:mockito-junit-jupiter:5.14.2")
 }
+
 
 application {
     mainClass.set("com.agentdsl.cli.AgentDslCli")

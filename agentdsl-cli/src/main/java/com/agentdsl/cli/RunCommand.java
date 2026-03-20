@@ -26,6 +26,9 @@ import java.util.concurrent.Callable;
  *   # 向指定名称的 Agent 发送消息
  *   agentdsl run examples/multi-agent.agent.groovy --agent translator --chat "Hello"
  *
+ *   # 打印每次 LLM 调用的完整对话内容（调试 Prompt、观察上下文变化）
+ *   agentdsl run examples/simple-chat.agent.groovy --chat "你好" --verbose
+ *
  *   # 执行工作流
  *   agentdsl run examples/workflow.agent.groovy \
  *       --workflow translate-pipeline \
@@ -64,6 +67,13 @@ public class RunCommand implements Callable<Integer> {
 
     @Option(names = { "--debug", "-d" }, description = "输出详细的调试级别追踪信息（包括模型 I/O、工具调用）", defaultValue = "false")
     private boolean debugModel;
+
+    @Option(
+        names = { "--verbose", "-v" },
+        description = "打印每次 LLM 调用的完整对话内容（消息列表和原始回复）",
+        defaultValue = "false"
+    )
+    private boolean verbose;
 
     @Option(names = { "--autonomous", "--auto" }, 
             description = "以自主模式执行，指定任务目标描述（可省略，配合 -ic 进入交互模式）",
@@ -110,6 +120,12 @@ public class RunCommand implements Callable<Integer> {
 
             if (debugModel) {
                 com.agentdsl.core.metrics.DebugTracer.enable();
+            }
+
+            if (verbose) {
+                LlmConversationPrinter printer = new LlmConversationPrinter();
+                engine.getExecutor().setLlmCallListener(printer);
+                engine.getAutonomousExecutor().setLlmCallListener(printer);
             }
 
             try {
