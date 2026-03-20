@@ -7,6 +7,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -101,6 +103,54 @@ class AutonomousDslTest {
             assertNotNull(agent.getAutonomous());
             assertEquals("plan", agent.getAutonomous().getExecutionMode());
             assertEquals(10, agent.getAutonomous().getMaxSteps());
+            assertEquals("plan", agent.getAutonomous().getPreset());
+            assertEquals(80_000, agent.getAutonomous().getMaxTokenBudget());
+            assertEquals(0L, agent.getAutonomous().getMaxTimeMs());
+        }
+
+        @Test
+        @DisplayName("preset / max_token_budget / max_time_ms 解析")
+        void shouldParseAutonomousPipelineHints() {
+            String dsl = """
+                    agent("pipe-hints") {
+                        model {
+                            provider "ollama"
+                            modelName "qwen3:14b"
+                        }
+                        autonomous {
+                            execution_mode "plan"
+                            max_steps 15
+                            preset "smart"
+                            max_token_budget 100000
+                            max_time_ms 600000
+                        }
+                    }
+                    """;
+
+            DslCompileResult result = compiler.compile(dsl);
+            AgentSpec agent = result.getFirstAgent();
+
+            assertEquals("smart", agent.getAutonomous().getPreset());
+            assertEquals(100_000, agent.getAutonomous().getMaxTokenBudget());
+            assertEquals(600_000L, agent.getAutonomous().getMaxTimeMs());
+        }
+
+        @Test
+        @DisplayName("examples/autonomous-smart.agent.groovy 可编译")
+        void shouldCompileAutonomousSmartExample() throws Exception {
+            Path script = Path.of("../examples/autonomous-smart.agent.groovy").toAbsolutePath().normalize();
+            assertTrue(Files.exists(script), () -> "缺少示例脚本: " + script);
+
+            String source = Files.readString(script);
+            DslCompileResult result = compiler.compile(source);
+
+            AgentSpec smart = result.getAgents().stream()
+                    .filter(a -> "SmartAgent".equals(a.getName()))
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError("未找到 SmartAgent"));
+            assertEquals("smart", smart.getAutonomous().getPreset());
+            assertEquals(100_000, smart.getAutonomous().getMaxTokenBudget());
+            assertEquals(600_000L, smart.getAutonomous().getMaxTimeMs());
         }
 
         @Test
