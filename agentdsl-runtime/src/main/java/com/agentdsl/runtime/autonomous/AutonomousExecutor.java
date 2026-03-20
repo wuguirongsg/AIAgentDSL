@@ -7,6 +7,11 @@ import com.agentdsl.core.spec.AutonomousSpec;
 import com.agentdsl.runtime.AgentInstance;
 import com.agentdsl.runtime.AgentRegistry;
 import com.agentdsl.runtime.LlmCallListener;
+import com.agentdsl.runtime.autonomous.impl.PipelineFactory;
+import com.agentdsl.runtime.autonomous.model.MonitorSignal;
+import com.agentdsl.runtime.autonomous.model.StepContext;
+import com.agentdsl.runtime.autonomous.pipeline.AutonomousPipeline;
+import com.agentdsl.runtime.autonomous.pipeline.PipelineContext;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
@@ -88,12 +93,14 @@ public class AutonomousExecutor {
                     "Agent '" + instance.getName() + "' 未配置 autonomous 模式");
         }
 
-        log.info("[{}] 自主模式启动 (mode={}, max_steps={}), 目标: {}",
-                instance.getName(), config.getExecutionMode(), config.getMaxSteps(), userGoal);
+        log.info("[{}] 自主模式启动 (mode={}, preset={}, max_steps={}), 目标: {}",
+                instance.getName(), config.getExecutionMode(),
+                config.getPreset(), config.getMaxSteps(), userGoal);
 
         if (DebugTracer.isEnabled()) {
             Map<String, Object> details = new HashMap<>();
             details.put("mode", config.getExecutionMode());
+            details.put("preset", config.getPreset());
             details.put("maxSteps", config.getMaxSteps());
             details.put("goal", userGoal);
             DebugTracer.record(DebugEvent.Type.AGENT_START, instance.getName(), details);
@@ -101,10 +108,37 @@ public class AutonomousExecutor {
         }
 
         try {
+            // ══ 构建 Pipeline（根据 preset 选择实现组合）══════════════
+            ChatModel model = instance.getModel();
+            AutonomousPipeline pipeline = PipelineFactory.create(config, model);
+
+            List<ToolSpecification> tools = instance.hasTools()
+                    ? new ArrayList<>(instance.getToolSpecifications()) : List.of();
+
+            // ══ Phase 1 + Phase 2：问题解构 + 策略规划 ════════════════
+            String phaseLabel = switch (config.getPreset().toLowerCase()) {
+                case "smart" -> "🔍 分析任务结构并生成多路径策略...";
+                case "fast"  -> "⚡ Fast 模式，快速分析任务...";
+                default      -> "🧠 分析任务并生成执行计划...";
+            };
+            userInteraction.showProgress(phaseLabel);
+            PipelineContext pipelineCtx = pipeline.prepare(userGoal, tools);
+
+            log.info("[{}] Pipeline 准备完成: {}", instance.getName(), pipelineCtx);
+
+            // 缺少能力时提前告知
+            if (pipelineCtx.getProblemSpec() != null
+                    && !pipelineCtx.getProblemSpec().isExecutable()) {
+                userInteraction.showProgress(
+                    "⚠️  任务可能无法完全完成，缺少以下能力：\n" +
+                    String.join("\n", pipelineCtx.getProblemSpec().getMissingCapabilities())
+                );
+            }
+
             if (config.isPlanMode()) {
-                return executePlanMode(instance, userGoal, config);
+                return executePlanMode(instance, userGoal, config, pipeline, pipelineCtx);
             } else {
-                return executeFastMode(instance, userGoal, config);
+                return executeFastMode(instance, userGoal, config, pipeline, pipelineCtx);
             }
         } finally {
             if (DebugTracer.isEnabled()) {
@@ -161,20 +195,18 @@ public class AutonomousExecutor {
     // Plan 模式
     // ────────────────────────────────────────────────────────────────
 
-    private AutonomousResult executePlanMode(AgentInstance instance, String userGoal, AutonomousSpec config) {
+    private AutonomousResult executePlanMode(AgentInstance instance, String userGoal,
+            AutonomousSpec config, AutonomousPipeline pipeline, PipelineContext pipelineCtx) {
         ChatModel model = instance.getModel();
         List<ToolSpecification> tools = instance.hasTools()
-                ? new ArrayList<>(instance.getToolSpecifications())
-                : List.of();
+                ? new ArrayList<>(instance.getToolSpecifications()) : List.of();
 
+        // Plan 模式：仍然支持用户确认计划（基于 Phase 2 的策略）
         PlannerEngine planner = new PlannerEngine(model);
-
-        // 1. 生成执行计划
-        userInteraction.showProgress("🧠 正在分析任务并生成执行计划...");
+        userInteraction.showProgress("📋 生成执行计划（供确认）...");
         ExecutionPlan plan = planner.generatePlan(userGoal, tools, instance.getSpec().getSystemPrompt());
         log.info("[{}] 生成了 {} 步执行计划", instance.getName(), plan.getSteps().size());
 
-        // 2. 计划确认循环
         int maxPlanRevisions = 3;
         for (int revision = 0; revision < maxPlanRevisions; revision++) {
             PlanFeedback feedback = userInteraction.confirmPlan(plan.toDisplayString());
@@ -185,10 +217,8 @@ public class AutonomousExecutor {
             } else if (feedback.isModify()) {
                 userInteraction.showProgress("🔄 根据您的建议重新规划...");
                 plan = planner.revisePlan(plan, feedback.userInput(), tools, instance.getSpec().getSystemPrompt());
-                log.info("[{}] 计划已修改 (第 {} 次修改)", instance.getName(), revision + 1);
-                // 继续循环，再次展示修改后的计划
+                log.info("[{}] 计划已修改 (第 {} 次)", instance.getName(), revision + 1);
             } else {
-                // REJECT
                 log.info("[{}] 用户拒绝执行计划", instance.getName());
                 AutonomousResult result = new AutonomousResult();
                 result.setPlan(plan);
@@ -199,8 +229,7 @@ public class AutonomousExecutor {
             }
         }
 
-        // 3. 执行 ReAct 循环
-        AutonomousResult result = executeReActLoop(instance, userGoal, config, plan);
+        AutonomousResult result = executeReActLoop(instance, userGoal, config, plan, pipeline, pipelineCtx);
         result.setPlan(plan);
         return result;
     }
@@ -209,16 +238,19 @@ public class AutonomousExecutor {
     // Fast 模式
     // ────────────────────────────────────────────────────────────────
 
-    private AutonomousResult executeFastMode(AgentInstance instance, String userGoal, AutonomousSpec config) {
-        userInteraction.showProgress("⚡ Fast 模式，直接开始执行...\n");
-        return executeReActLoop(instance, userGoal, config, null);
+    private AutonomousResult executeFastMode(AgentInstance instance, String userGoal,
+            AutonomousSpec config, AutonomousPipeline pipeline, PipelineContext pipelineCtx) {
+        userInteraction.showProgress("⚡ 开始执行...\n");
+        return executeReActLoop(instance, userGoal, config, null, pipeline, pipelineCtx);
     }
 
     // ────────────────────────────────────────────────────────────────
     // ReAct 循环核心
     // ────────────────────────────────────────────────────────────────
 
-    private AutonomousResult executeReActLoop(AgentInstance instance, String userGoal, AutonomousSpec config, ExecutionPlan plan) {
+    private AutonomousResult executeReActLoop(AgentInstance instance, String userGoal,
+            AutonomousSpec config, ExecutionPlan plan,
+            AutonomousPipeline pipeline, PipelineContext pipelineCtx) {
         ChatModel model = instance.getModel();
         String agentName = instance.getName();
         int maxSteps = config.getMaxSteps();
@@ -252,9 +284,9 @@ public class AutonomousExecutor {
             }
         }
 
-        // 构建 ReAct System Prompt
+        // 构建 ReAct System Prompt（注入 Phase 1/2 上下文）
         String reactSystemPrompt = buildReActSystemPrompt(
-                instance.getSpec().getSystemPrompt(), userGoal, tools, plan);
+                instance.getSpec().getSystemPrompt(), userGoal, tools, plan, pipelineCtx);
 
         // 消息历史：SystemMessage 必须放在最前，再追加 memory 历史（过滤掉旧 SystemMessage）
         List<ChatMessage> messages = new ArrayList<>();
@@ -279,7 +311,6 @@ public class AutonomousExecutor {
         List<AutonomousResult.StepResult> stepResults = new ArrayList<>();
         int stepCount = 0;
 
-        StagnationDetector stagnationDetector = new StagnationDetector();
         int noToolCallCount = 0;
         int messageCompressionThreshold = Math.max(6, maxSteps / 2);
 
@@ -390,21 +421,6 @@ public class AutonomousExecutor {
             // 有工具调用 → 执行工具
             StringBuilder actionDesc = new StringBuilder();
             StringBuilder observationDesc = new StringBuilder();
-
-            if (stagnationDetector.record(aiMessage.toolExecutionRequests())) {
-                log.warn("[{}] 检测到执行停滞，连续 {} 步相同操作", 
-                         agentName, 3);
-                messages.add(UserMessage.from(
-                    "[系统提示] 你已连续 3 步执行相同操作但未取得进展。\n" +
-                    "请重新分析问题，考虑：\n" +
-                    "1. 当前路径是否可行？\n" +
-                    "2. 是否需要换一种工具或方法？\n" +
-                    "3. 是否需要拆分任务为更小的子目标？"
-                ));
-                stagnationDetector.reset();
-                continue;
-            }
-            
             messages.add(aiMessage);
             noToolCallCount = 0;
 
@@ -461,6 +477,43 @@ public class AutonomousExecutor {
                     stepCount, actionDesc.toString().trim(),
                     observationDesc.toString().trim(), stepDuration));
 
+            // ══ Phase 4：元认知监控（每步结束后调用）══════════════════════
+            List<StepContext.ToolCall> toolCalls = aiMessage.toolExecutionRequests().stream()
+                    .map(r -> new StepContext.ToolCall(
+                            r.name(),
+                            r.arguments() != null ? r.arguments().hashCode() : 0,
+                            observationDesc.toString().trim()))
+                    .collect(Collectors.toList());
+
+            StepContext stepCtx = new StepContext(
+                    aiMessage.text(), toolCalls, 0 /* token 估算值，可接入实际计数 */);
+            MonitorSignal signal = pipeline.getMonitor().analyze(stepCtx);
+
+            if (signal.requiresIntervention()) {
+                String injectionMsg = signal.buildInjectionMessage();
+                if (signal.highestSeverity() == MonitorSignal.Severity.HIGH
+                        && signal.hasType(MonitorSignal.InterventionType.STRATEGY_SWITCH)) {
+                    // 高严重度停滞：切换备用策略
+                    pipelineCtx.getExecutionStrategy().getFallbackStrategy().ifPresentOrElse(
+                        fallback -> {
+                            userInteraction.showProgress("🔄 主策略受阻，切换备用策略：" + fallback.getName());
+                            messages.add(UserMessage.from(
+                                "[策略切换] 当前路径受阻，切换到备用方案：\n" +
+                                fallback.getApproach() + "\n\n" + injectionMsg));
+                            pipelineCtx.activateFallbackStrategy();
+                        },
+                        () -> messages.add(UserMessage.from("[系统监控]\n" + injectionMsg))
+                    );
+                } else {
+                    // 其他干预：注入引导消息，让 LLM 在下一轮 Thought 感知到
+                    messages.add(UserMessage.from("[系统监控]\n" + injectionMsg));
+                    if (signal.hasType(MonitorSignal.InterventionType.FORCE_CONCLUDE)) {
+                        // 强制收尾：注入后立即让 LLM 给出最终答案
+                        log.info("[{}] 元认知监控触发强制收尾", agentName);
+                    }
+                }
+            }
+
             if (stepCount > messageCompressionThreshold) {
                 List<ChatMessage> compressedMessages = new ArrayList<>();
                 compressedMessages.add(SystemMessage.from(reactSystemPrompt));
@@ -499,6 +552,7 @@ public class AutonomousExecutor {
     // Helper Methods
     // ────────────────────────────────────────────────────────────────
 
+    /** 不含 PipelineContext 的基础 Prompt（向后兼容用）。 */
     private String buildReActSystemPrompt(String agentSystemPrompt, String userGoal,
             List<ToolSpecification> tools) {
         String toolDescriptions = tools.stream()
@@ -527,22 +581,44 @@ public class AutonomousExecutor {
 
                 ### 可用工具
                 %s
-                """.formatted(userGoal, 
+                """.formatted(userGoal,
                       toolDescriptions.isEmpty() ? "（无工具，仅使用推理能力）" : toolDescriptions);
     }
 
+    /** 含 ExecutionPlan 的 Prompt（plan 模式向后兼容）。 */
     private String buildReActSystemPrompt(String agentSystemPrompt, String userGoal,
             List<ToolSpecification> tools, ExecutionPlan plan) {
         String base = buildReActSystemPrompt(agentSystemPrompt, userGoal, tools);
-        if (plan == null) {
-            return base;
-        }
+        if (plan == null) return base;
         return base + """
 
                 ### 预定执行计划
                 """ + plan.toDisplayString() + """
                 请按照此计划执行，如需偏离请在 Reflect 中说明原因。
                 """;
+    }
+
+    /** 含 PipelineContext 的完整 Prompt（注入成功标准 + 策略步骤）。 */
+    private String buildReActSystemPrompt(String agentSystemPrompt, String userGoal,
+            List<ToolSpecification> tools, ExecutionPlan plan, PipelineContext pipelineCtx) {
+        String base = buildReActSystemPrompt(agentSystemPrompt, userGoal, tools, plan);
+        if (pipelineCtx == null) return base;
+
+        StringBuilder extra = new StringBuilder();
+
+        // 注入成功标准（Phase 1 输出），让 LLM 知道明确的完成条件
+        if (!pipelineCtx.getSuccessCriteria().isEmpty()) {
+            extra.append("\n### 成功标准（满足以下任一条件即可输出 TASK_COMPLETE）\n");
+            pipelineCtx.getSuccessCriteria().forEach(c -> extra.append("- ").append(c).append("\n"));
+        }
+
+        // 注入策略步骤（Phase 2 输出）
+        String strategyText = pipelineCtx.getActiveStrategyStepsText();
+        if (!strategyText.isBlank()) {
+            extra.append("\n### 建议执行路径（Phase 2 规划）\n").append(strategyText).append("\n");
+        }
+
+        return base + extra;
     }
 
     private String buildProgressSummary(List<AutonomousResult.StepResult> steps) {
@@ -691,32 +767,4 @@ public class AutonomousExecutor {
         return FailureType.UNKNOWN;
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // 停滞检测器
-    // ────────────────────────────────────────────────────────────────
-
-    private static class StagnationDetector {
-        private static final int STAGNATION_WINDOW = 3;
-        private final java.util.Deque<String> recentActions = new java.util.ArrayDeque<>();
-
-        public boolean record(List<ToolExecutionRequest> requests) {
-            if (requests.isEmpty()) return false;
-
-            String actionFingerprint = requests.stream()
-                .map(r -> r.name() + ":" + r.arguments().hashCode())
-                .collect(java.util.stream.Collectors.joining("|"));
-
-            recentActions.addLast(actionFingerprint);
-            if (recentActions.size() > STAGNATION_WINDOW) {
-                recentActions.removeFirst();
-            }
-
-            return recentActions.size() == STAGNATION_WINDOW
-                && recentActions.stream().distinct().count() == 1;
-        }
-
-        public void reset() {
-            recentActions.clear();
-        }
-    }
 }
