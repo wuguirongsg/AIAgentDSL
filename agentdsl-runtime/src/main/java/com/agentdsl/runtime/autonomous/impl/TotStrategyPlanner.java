@@ -205,8 +205,32 @@ public class TotStrategyPlanner implements StrategyPlanner {
         if (text == null) throw new IllegalArgumentException("LLM 返回为空");
         int start = text.indexOf('[');
         int end = text.lastIndexOf(']');
-        if (start >= 0 && end > start) return text.substring(start, end + 1);
+        if (start >= 0 && end > start) {
+            String json = text.substring(start, end + 1);
+            if (!isBalanced(json)) {
+                throw new IllegalArgumentException("LLM 返回的 JSON 不完整（可能被截断）");
+            }
+            return json;
+        }
         return "[]";
+    }
+
+    private boolean isBalanced(String json) {
+        int braceCount = 0;
+        int bracketCount = 0;
+        boolean inString = false;
+        char prev = 0;
+        for (char c : json.toCharArray()) {
+            if (c == '"' && prev != '\\') inString = !inString;
+            if (!inString) {
+                if (c == '{') braceCount++;
+                else if (c == '}') braceCount--;
+                else if (c == '[') bracketCount++;
+                else if (c == ']') bracketCount--;
+            }
+            prev = c;
+        }
+        return braceCount == 0 && bracketCount == 0;
     }
 
     private String getStr(JsonNode node, String key, String def) {

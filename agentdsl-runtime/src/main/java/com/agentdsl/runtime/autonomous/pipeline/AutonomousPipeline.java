@@ -34,11 +34,14 @@ public class AutonomousPipeline {
     private final ProblemDecomposer decomposer;
     private final StrategyPlanner strategyPlanner;
     private final ExecutionMonitor monitor;
+    private final PipelineThoughtListener thoughtListener;
 
     private AutonomousPipeline(Builder builder) {
         this.decomposer = builder.decomposer;
         this.strategyPlanner = builder.strategyPlanner;
         this.monitor = builder.monitor;
+        this.thoughtListener = builder.thoughtListener != null
+                ? builder.thoughtListener : PipelineThoughtListener.NOOP;
     }
 
     /**
@@ -53,12 +56,14 @@ public class AutonomousPipeline {
         ProblemSpec problem = decomposer.decompose(userGoal, tools);
         ctx.setProblemSpec(problem);
         log.debug("Pipeline Phase 1 complete: {}", problem);
+        thoughtListener.onDecomposition(problem);
 
         // Phase 2：策略规划
         log.debug("Pipeline Phase 2 start: planning strategy");
         ExecutionStrategy strategy = strategyPlanner.plan(problem, tools);
         ctx.setExecutionStrategy(strategy);
         log.debug("Pipeline Phase 2 complete: {}", strategy);
+        thoughtListener.onStrategyPlanning(strategy);
 
         // Phase 4 监控器重置（新任务）
         monitor.reset();
@@ -80,6 +85,9 @@ public class AutonomousPipeline {
      */
     public ExecutionMonitor getMonitor() { return monitor; }
 
+    /** 思考过程监听器（可选，用于展示内部思考过程）。 */
+    public PipelineThoughtListener getThoughtListener() { return thoughtListener; }
+
     // ── Builder ───────────────────────────────────────────────────────
 
     public static Builder builder() { return new Builder(); }
@@ -88,6 +96,7 @@ public class AutonomousPipeline {
         private ProblemDecomposer decomposer;
         private StrategyPlanner strategyPlanner;
         private ExecutionMonitor monitor;
+        private PipelineThoughtListener thoughtListener;
 
         public Builder decomposer(ProblemDecomposer d) {
             this.decomposer = d;
@@ -101,6 +110,11 @@ public class AutonomousPipeline {
 
         public Builder monitor(ExecutionMonitor m) {
             this.monitor = m;
+            return this;
+        }
+
+        public Builder thoughtListener(PipelineThoughtListener listener) {
+            this.thoughtListener = listener;
             return this;
         }
 

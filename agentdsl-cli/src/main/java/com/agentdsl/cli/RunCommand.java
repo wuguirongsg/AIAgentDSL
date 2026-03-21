@@ -39,6 +39,9 @@ import java.util.concurrent.Callable;
  *
  *   # 以自主模式执行 Agent
  *   agentdsl run examples/autonomous-agent.agent.groovy --autonomous "帮我搜索最新的 AI 新闻"
+ *
+ *   # 显示自主模式的思考过程（问题解构、策略规划、监控分析）
+ *   agentdsl run examples/smart.agent.groovy --autonomous "分析项目代码质量" --think
  * </pre>
  */
 @Command(name = "run", description = "加载并执行 DSL 脚本（Agent 对话或工作流）", mixinStandardHelpOptions = true)
@@ -74,6 +77,13 @@ public class RunCommand implements Callable<Integer> {
         defaultValue = "false"
     )
     private boolean verbose;
+
+    @Option(
+        names = { "--think", "-t" },
+        description = "输出 Pipeline 各阶段的思考过程（问题解构、策略规划、监控分析）",
+        defaultValue = "false"
+    )
+    private boolean showThink;
 
     @Option(names = { "--autonomous", "--auto" }, 
             description = "以自主模式执行，指定任务目标描述（可省略，配合 -ic 进入交互模式）",
@@ -126,6 +136,12 @@ public class RunCommand implements Callable<Integer> {
                 LlmConversationPrinter printer = new LlmConversationPrinter();
                 engine.getExecutor().setLlmCallListener(printer);
                 engine.getAutonomousExecutor().setLlmCallListener(printer);
+            }
+
+            if (showThink) {
+                engine.getAutonomousExecutor().setPipelineThoughtListener(
+                    new com.agentdsl.runtime.autonomous.impl.ConsolePipelineThoughtListener()
+                );
             }
 
             try {

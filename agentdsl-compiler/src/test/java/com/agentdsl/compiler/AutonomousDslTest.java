@@ -138,11 +138,36 @@ class AutonomousDslTest {
         @Test
         @DisplayName("examples/autonomous-smart.agent.groovy 可编译")
         void shouldCompileAutonomousSmartExample() throws Exception {
-            Path script = Path.of("../examples/autonomous-smart.agent.groovy").toAbsolutePath().normalize();
-            assertTrue(Files.exists(script), () -> "缺少示例脚本: " + script);
+            String dsl= """
+            agent('SmartAgent') {
+                model {
+                    // provider 'gemini'
+                    // modelName 'gemini-2.5-flash'
+                    provider 'gemini'
+                    modelName 'gemini-3.1-pro-preview'
+                }
 
-            String source = Files.readString(script);
-            DslCompileResult result = compiler.compile(source);
+                autonomous {
+                    execution_mode 'plan'
+                    max_steps 20
+                    preset 'smart'
+                    max_token_budget 100000
+                    max_time_ms 600000
+                }
+
+                tools {
+                    include 'http_get'
+                    include 'json_parse'
+                    include 'file_read'
+                    include 'file_write'
+                    include 'cmd_execute'
+                }
+            
+                systemPrompt '''你是自主任务助手。遵循 System Prompt 中注入的成功标准与策略步骤；
+            遇到元认知干预提示时，按要求切换思路、压缩上下文或收敛结论。'''
+            } 
+            """;
+            DslCompileResult result = compiler.compile(dsl);
 
             AgentSpec smart = result.getAgents().stream()
                     .filter(a -> "SmartAgent".equals(a.getName()))

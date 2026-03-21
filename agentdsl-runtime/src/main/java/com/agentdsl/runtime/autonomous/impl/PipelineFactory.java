@@ -2,6 +2,7 @@ package com.agentdsl.runtime.autonomous.impl;
 
 import com.agentdsl.core.spec.AutonomousSpec;
 import com.agentdsl.runtime.autonomous.pipeline.AutonomousPipeline;
+import com.agentdsl.runtime.autonomous.pipeline.PipelineThoughtListener;
 import dev.langchain4j.model.chat.ChatModel;
 
 /**
@@ -31,58 +32,71 @@ public class PipelineFactory {
      * @return 组装好的 Pipeline
      */
     public static AutonomousPipeline create(AutonomousSpec config, ChatModel model) {
+        return create(config, model, null);
+    }
+
+    /**
+     * 根据 AutonomousSpec 创建对应的 Pipeline（带思考过程监听器）。
+     *
+     * @param config Agent 的自主配置
+     * @param model  ChatModel 实例（LLM 型组件需要）
+     * @param thoughtListener 思考过程监听器（可选，null 表示不输出）
+     * @return 组装好的 Pipeline
+     */
+    public static AutonomousPipeline create(AutonomousSpec config, ChatModel model,
+                                            PipelineThoughtListener thoughtListener) {
         String preset = config.getPreset();
 
         return switch (preset.toLowerCase()) {
-            case "smart"  -> smartPipeline(model, config);
-            case "fast"   -> fastPipeline(model);
-            default       -> planPipeline(model);     // "plan" 及未知 preset
+            case "smart"  -> smartPipeline(model, config, thoughtListener);
+            case "fast"   -> fastPipeline(model, thoughtListener);
+            default       -> planPipeline(model, thoughtListener);     // "plan" 及未知 preset
         };
     }
 
     // ── 预定义 Pipeline 组合 ──────────────────────────────────────────
 
-    /**
-     * smart pipeline — 全套四阶段，适合复杂/探索性任务。
-     * Phase 1: LlmProblemDecomposer（带降级）
-     * Phase 2: TotStrategyPlanner（多路径 + 评分）
-     * Phase 4: MetaCognitiveMonitor（停滞/置信度/资源/矛盾）
-     */
     public static AutonomousPipeline smartPipeline(ChatModel model, AutonomousSpec config) {
+        return smartPipeline(model, config, null);
+    }
+
+    public static AutonomousPipeline smartPipeline(ChatModel model, AutonomousSpec config,
+                                                   PipelineThoughtListener thoughtListener) {
         int tokenBudget = config.getMaxTokenBudget() > 0
                 ? config.getMaxTokenBudget() : DEFAULT_TOKEN_BUDGET;
         return AutonomousPipeline.builder()
                 .decomposer(new LlmProblemDecomposer(model))
                 .strategyPlanner(new TotStrategyPlanner(model))
                 .monitor(new MetaCognitiveMonitor(tokenBudget, config.getMaxTimeMs()))
+                .thoughtListener(thoughtListener)
                 .build();
     }
 
-    /**
-     * plan pipeline — 中等成本，兼容现有 plan 模式行为。
-     * Phase 1: LlmProblemDecomposer（成功标准注入）
-     * Phase 2: LinearStrategyPlanner（单路径，对应原 PlannerEngine）
-     * Phase 4: BasicStagnationMonitor（仅停滞检测）
-     */
     public static AutonomousPipeline planPipeline(ChatModel model) {
+        return planPipeline(model, null);
+    }
+
+    public static AutonomousPipeline planPipeline(ChatModel model,
+                                                  PipelineThoughtListener thoughtListener) {
         return AutonomousPipeline.builder()
                 .decomposer(new LlmProblemDecomposer(model))
                 .strategyPlanner(new LinearStrategyPlanner(model))
                 .monitor(new BasicStagnationMonitor())
+                .thoughtListener(thoughtListener)
                 .build();
     }
 
-    /**
-     * fast pipeline — 极低成本，适合简单/明确任务。
-     * Phase 1: DefaultProblemDecomposer（启发式，零 LLM）
-     * Phase 2: LinearStrategyPlanner（单路径）
-     * Phase 4: BasicStagnationMonitor（仅停滞检测）
-     */
     public static AutonomousPipeline fastPipeline(ChatModel model) {
+        return fastPipeline(model, null);
+    }
+
+    public static AutonomousPipeline fastPipeline(ChatModel model,
+                                                  PipelineThoughtListener thoughtListener) {
         return AutonomousPipeline.builder()
                 .decomposer(new DefaultProblemDecomposer())
                 .strategyPlanner(new LinearStrategyPlanner(model))
                 .monitor(new BasicStagnationMonitor())
+                .thoughtListener(thoughtListener)
                 .build();
     }
 }

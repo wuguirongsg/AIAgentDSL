@@ -18,6 +18,7 @@ agent('SmartAgent') {
         // modelName 'gemini-2.5-flash'
         provider 'gemini'
         modelName 'gemini-3.1-pro-preview'
+        maxTokens 8192
     }
 
     autonomous {

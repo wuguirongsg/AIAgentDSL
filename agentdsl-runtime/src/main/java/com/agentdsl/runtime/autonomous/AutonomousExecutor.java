@@ -62,6 +62,9 @@ public class AutonomousExecutor {
     /** 可选的 LLM 调用监听器，null 表示不打印（默认）。 */
     private LlmCallListener llmCallListener;
 
+    /** 可选的 Pipeline 思考过程监听器，null 表示不输出（默认）。 */
+    private com.agentdsl.runtime.autonomous.pipeline.PipelineThoughtListener pipelineThoughtListener;
+
     public AutonomousExecutor(UserInteraction userInteraction) {
         this(userInteraction, null);
     }
@@ -77,6 +80,15 @@ public class AutonomousExecutor {
      */
     public void setLlmCallListener(LlmCallListener llmCallListener) {
         this.llmCallListener = llmCallListener;
+    }
+
+    /**
+     * 设置 Pipeline 思考过程监听器（例如 --think 模式的控制台打印器）。
+     * 传入 null 可关闭监听。
+     */
+    public void setPipelineThoughtListener(
+            com.agentdsl.runtime.autonomous.pipeline.PipelineThoughtListener listener) {
+        this.pipelineThoughtListener = listener;
     }
 
     /**
@@ -110,7 +122,7 @@ public class AutonomousExecutor {
         try {
             // ══ 构建 Pipeline（根据 preset 选择实现组合）══════════════
             ChatModel model = instance.getModel();
-            AutonomousPipeline pipeline = PipelineFactory.create(config, model);
+            AutonomousPipeline pipeline = PipelineFactory.create(config, model, pipelineThoughtListener);
 
             List<ToolSpecification> tools = instance.hasTools()
                     ? new ArrayList<>(instance.getToolSpecifications()) : List.of();
@@ -488,6 +500,10 @@ public class AutonomousExecutor {
             StepContext stepCtx = new StepContext(
                     aiMessage.text(), toolCalls, 0 /* token 估算值，可接入实际计数 */);
             MonitorSignal signal = pipeline.getMonitor().analyze(stepCtx);
+
+            if (pipeline.getThoughtListener() != null) {
+                pipeline.getThoughtListener().onMonitorAnalysis(stepCount, stepCtx, signal);
+            }
 
             if (signal.requiresIntervention()) {
                 String injectionMsg = signal.buildInjectionMessage();
