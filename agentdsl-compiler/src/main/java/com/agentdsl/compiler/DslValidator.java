@@ -1,5 +1,6 @@
 package com.agentdsl.compiler;
 
+import com.agentdsl.core.builtin.BuiltinSkillRegistry;
 import com.agentdsl.core.exception.DslCompilationException;
 import com.agentdsl.core.spec.AgentSpec;
 import com.agentdsl.core.spec.AutonomousSpec;
@@ -60,7 +61,7 @@ public class DslValidator {
         if (!agents.isEmpty() && !workflows.isEmpty()) {
             validateWorkflowAgentReferences(workflows, agents);
         }
-        if (!skills.isEmpty()) {
+        if (!agents.isEmpty()) {
             validateSkillReferences(agents, skills);
         }
 
@@ -363,11 +364,39 @@ public class DslValidator {
             if (agent.getSkillRefs() == null)
                 continue;
             for (String ref : agent.getSkillRefs()) {
+                if (BuiltinSkillRegistry.isBuiltinSkill(ref)) {
+                    // 内置 skill 的名称合法，但还需校验 agent 配置是否满足该 skill 的生效条件
+                    validateBuiltinSkillConditions(ref, agent);
+                    continue;
+                }
                 if (!definedSkillNames.contains(ref)) {
                     throw new DslCompilationException("ADSL-003",
                             "Agent '" + agent.getName() + "' 引用了未定义的技能: '" + ref
                                     + "'，已定义的技能: " + definedSkillNames);
                 }
+            }
+        }
+    }
+
+    /**
+     * 校验内置 skill 的生效条件。
+     * 条件知识放在编译器层，core 层的 BuiltinSkillRegistry 只维护名称白名单。
+     */
+    private static void validateBuiltinSkillConditions(String skillName, AgentSpec agent) {
+        switch (skillName) {
+            case BuiltinSkillRegistry.DEEP_RECALL -> {
+                boolean hasHypergraphMemory = agent.getMemory() != null
+                        && "hypergraph".equalsIgnoreCase(agent.getMemory().getType());
+                if (!hasHypergraphMemory) {
+                    throw new DslCompilationException("ADSL-003",
+                            "Agent '" + agent.getName() + "' 引用了内置 Skill 'deep_recall'，"
+                                    + "但 deep_recall 需要 memory.type = \"hypergraph\"，"
+                                    + "当前 memory type: "
+                                    + (agent.getMemory() != null ? agent.getMemory().getType() : "未配置"));
+                }
+            }
+            default -> {
+                // 其他内置 skill 暂无额外条件
             }
         }
     }

@@ -3,6 +3,7 @@ val langchain4jVersion = "1.11.0"
 dependencies {
     implementation(project(":agentdsl-core"))
     implementation("org.apache.groovy:groovy-json:4.0.27")
+    runtimeOnly(project(":agentdsl-memory-hypergraph"))
 
     // LangChain4j core
     implementation("dev.langchain4j:langchain4j:$langchain4jVersion")

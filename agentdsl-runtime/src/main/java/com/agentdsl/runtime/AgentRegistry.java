@@ -14,6 +14,10 @@ import com.agentdsl.langchain4j.LangChainToolBridge;
 import com.agentdsl.langchain4j.LangChainToolBridge.ToolEntry;
 import com.agentdsl.mcp.McpToolProviderBridge;
 import com.agentdsl.mcp.McpToolProviderBridge.McpToolsResult;
+import com.agentdsl.runtime.skill.BuiltinSkillResolver;
+import com.agentdsl.runtime.skill.MemoryBuiltinSkillResolver;
+import com.agentdsl.runtime.skill.MemoryCapabilityBridge;
+import com.agentdsl.runtime.skill.SkillRegistrationPipeline;
 import com.agentdsl.tools.ToolScanner;
 import com.agentdsl.tools.builtin.NativeBrowserTool;
 import dev.langchain4j.agent.tool.ToolSpecification;
@@ -50,6 +54,7 @@ public class AgentRegistry {
     private final LangChainRagFactory ragFactory;
     private final McpToolProviderBridge mcpBridge;
     private final McpDiscoveryService mcpDiscoveryService;
+    private final SkillRegistrationPipeline skillRegistrationPipeline;
     private final List<McpToolsResult> mcpConnections = new ArrayList<>();
     private final List<NativeBrowserTool> activeBrowserTools = new ArrayList<>();
 
@@ -76,6 +81,10 @@ public class AgentRegistry {
         this.ragFactory = ragFactory;
         this.mcpBridge = new McpToolProviderBridge();
         this.mcpDiscoveryService = mcpDiscoveryService;
+        MemoryCapabilityBridge memoryCapabilityBridge = new MemoryCapabilityBridge(toolBridge);
+        List<BuiltinSkillResolver> builtinSkillResolvers = List.of(new MemoryBuiltinSkillResolver(memoryCapabilityBridge));
+        this.skillRegistrationPipeline = new SkillRegistrationPipeline(globalSkills, builtinSkillResolvers, toolBridge);
+        this.memoryFactory.bindModelFactory(modelFactory);
 
         // 注入 toolCall 解析器：允许 Logic Skill 闭包内调用已注册的全局工具
         this.toolBridge.setToolCallResolver((toolName, params) -> {
@@ -167,7 +176,12 @@ public class AgentRegistry {
         ChatModel model = modelFactory.create(agentSpec.getModel());
 
         // 2. 创建记忆
-        ChatMemory memory = memoryFactory.create(agentSpec.getMemory());
+        // 若 DSL 中未显式设置 memoryId，将 agent 名称注入为默认值，
+        // 确保同名 agent 重启后能使用相同的 memoryId 检索持久化记忆。
+        if (agentSpec.getMemory() != null && agentSpec.getMemory().getOption("memoryId") == null) {
+            agentSpec.getMemory().putOption("memoryId", agentSpec.getName());
+        }
+        ChatMemory memory = memoryFactory.create(agentSpec.getMemory(), agentSpec.getModel(), model);
 
         // 3. 收集工具
         List<ToolSpecification> toolSpecifications = new ArrayList<>();
@@ -196,61 +210,14 @@ public class AgentRegistry {
             }
         }
 
-        // 展平全局 Skill 引用（include "skillName"）
-        // - Logic Skill → 注册为可执行工具
-        // - Prompt Skill → 注入到 systemPrompt（不暴露为工具，避免 LLM 误用）
-        StringBuilder skillPromptAppend = new StringBuilder();
-        if (agentSpec.getSkillRefs() != null) {
-            for (String skillRef : agentSpec.getSkillRefs()) {
-                SkillSpec skill = globalSkills.get(skillRef);
-                if (skill == null) {
-                    throw new DslRuntimeException("ADSL-011",
-                            "Agent '" + agentSpec.getName() + "' 引用了未注册的技能: " + skillRef);
-                }
-                if (skill.isLogicSkill()) {
-                    ToolSpec skillAsTool = flattenSkillToTool(skill);
-                    ToolEntry entry = toolBridge.convert(skillAsTool);
-                    toolSpecifications.add(entry.specification());
-                    toolExecutors.put(entry.specification().name(), entry.executor());
-                    log.info("Agent '{}' 注册 Logic Skill 为工具: {}", agentSpec.getName(), skill.getName());
-                } else {
-                    // Prompt Skill: 注入到 system prompt
-                    skillPromptAppend.append("\n\n---\n### Skill: ").append(skill.getName())
-                            .append("\n").append(skill.getInstruction());
-                    log.info("Agent '{}' 注入 Prompt Skill 到 systemPrompt: {}",
-                            agentSpec.getName(), skill.getName());
-                }
-            }
-        }
-
-        // 展平内联 Skill（includeFile "path"，直接嵌入 AgentSpec）
-        // - Logic Skill → 注册为工具
-        // - Prompt Skill → 拼接到 systemPrompt（Anthropic Skills 标准用法）
-        if (agentSpec.getInlineSkills() != null) {
-            for (SkillSpec skill : agentSpec.getInlineSkills()) {
-                if (skill.isLogicSkill()) {
-                    ToolSpec skillAsTool = flattenSkillToTool(skill);
-                    ToolEntry entry = toolBridge.convert(skillAsTool);
-                    toolSpecifications.add(entry.specification());
-                    toolExecutors.put(entry.specification().name(), entry.executor());
-                    log.info("Agent '{}' 注册 inline Logic Skill 为工具: {}",
-                            agentSpec.getName(), skill.getName());
-                } else {
-                    // Prompt Skill (来自 includeFile): 注入到 system prompt
-                    skillPromptAppend.append("\n\n---\n### Skill: ").append(skill.getName())
-                            .append("\n").append(skill.getInstruction());
-                    log.info("Agent '{}' 注入 inline Prompt Skill 到 systemPrompt: {} ({} 字符)",
-                            agentSpec.getName(), skill.getName(),
-                            skill.getInstruction() != null ? skill.getInstruction().length() : 0);
-                }
-            }
-        }
+        String skillPromptAppend = skillRegistrationPipeline.register(
+                agentSpec, memory, toolSpecifications, toolExecutors);
 
         // 将 Prompt Skill 内容追加到 systemPrompt
         String finalSystemPrompt = agentSpec.getSystemPrompt() != null
                 ? agentSpec.getSystemPrompt()
                 : "";
-        if (!skillPromptAppend.isEmpty()) {
+        if (!skillPromptAppend.isBlank()) {
             finalSystemPrompt = finalSystemPrompt + skillPromptAppend;
             log.info("Agent '{}' systemPrompt 已追加 Skill 知识，总长度: {} 字符",
                     agentSpec.getName(), finalSystemPrompt.length());
@@ -325,7 +292,6 @@ public class AgentRegistry {
                     agentSpec.getName(), bTools.size());
         }
 
-        // 7. 组装实例
         AgentInstance instance = new AgentInstance(
                 agentSpec, model, memory, toolSpecifications, toolExecutors, contentRetriever);
 
@@ -692,55 +658,6 @@ public class AgentRegistry {
      */
     public java.util.function.BiFunction<String, Map<String, Object>, String> getToolCallResolver() {
         return this::executeToolDirectly;
-    }
-
-    /**
-     * 将 SkillSpec 展平为 ToolSpec。
-     * <ul>
-     * <li>Logic Skill → 直接复用其 executeBody 作为 ToolSpec 的执行闭包。</li>
-     * <li>Prompt Skill → 创建一个 Groovy Closure，内部将 instruction 加入到当前 Agent 的
-     * System Prompt 上下文中发起子 LLM 调用，返回结果。</li>
-     * </ul>
-     * <p>
-     * 内部使用 Groovy的 GroovyShell 准动执行闭包，确保可序列化且类型安全。
-     */
-    private ToolSpec flattenSkillToTool(SkillSpec skill) {
-        ToolSpec toolSpec = new ToolSpec(skill.getName());
-        toolSpec.setDescription(skill.getDescription());
-        toolSpec.setParameters(skill.getParameters());
-
-        if (skill.isLogicSkill()) {
-            // Logic Skill: 直接复用 executeBody
-            toolSpec.setExecuteBody(skill.getExecuteBody());
-        } else {
-            // Prompt Skill: 生成一个 Groovy Closure，内部将 instruction 注入到 LLM 调用中
-            // 此 Closure 接受 params Map，返回 String 结果。
-            // 注：此处用一个存储 instruction 的 Closure，实际子 LLM 调用在
-            // LangChainToolBridge 执行时处理（通过检测 executeBody 内的标记）。
-            // 目前实现为图实调用：将 instruction 和 params 拼接后返回，由主 Agent 的 LLM 分析。
-            final String instruction = skill.getInstruction();
-            groovy.lang.Closure<?> promptClosure = new groovy.lang.Closure<String>(this) {
-                @Override
-                public String call(Object... args) {
-                    // args[0] 是 params Map
-                    @SuppressWarnings("unchecked")
-                    java.util.Map<String, Object> params = args.length > 0
-                            ? (java.util.Map<String, Object>) args[0]
-                            : java.util.Collections.emptyMap();
-                    // 构建提示词:将参数注入 instruction 模板
-                    StringBuilder prompt = new StringBuilder(instruction);
-                    if (!params.isEmpty()) {
-                        prompt.append("\n\n输入参数:\n");
-                        params.forEach((k, v) -> prompt.append("- ").append(k).append(": ").append(v).append("\n"));
-                    }
-                    // 返回提示词，让主 Agent 的 LLM 执行后续弄理
-                    return prompt.toString();
-                }
-            };
-            toolSpec.setExecuteBody(promptClosure);
-        }
-
-        return toolSpec;
     }
 
     /**

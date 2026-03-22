@@ -16,6 +16,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.BiFunction;
+import java.util.function.Function;
 
 /**
  * LangChain4j 工具桥接器。
@@ -50,19 +51,55 @@ public class LangChainToolBridge {
      */
     public ToolEntry convert(ToolSpec toolSpec) {
         log.info("转换工具: {}", toolSpec.getName());
+        return convertDynamic(toolSpec, parsedParams -> {
+            if (toolSpec.isBeanMethod()) {
+                return invokeBeanMethod(toolSpec, parsedParams);
+            }
 
+            Object body = toolSpec.getExecuteBody();
+            if (body instanceof Closure<?> closure) {
+                if (toolCallResolver != null) {
+                    SkillExecutionContext ctx = new SkillExecutionContext(toolCallResolver);
+                    closure.setDelegate(ctx);
+                    closure.setResolveStrategy(Closure.DELEGATE_FIRST);
+                }
+
+                Object result = closure.getMaximumNumberOfParameters() == 0
+                        ? closure.call()
+                        : closure.call(parsedParams);
+                return result != null ? result.toString() : "null";
+            }
+            return "Error: Tool execute body is not a Closure";
+        });
+    }
+
+    public ToolEntry convertDynamic(String name,
+            String description,
+            List<ParameterSpec> parameters,
+            Function<Map<String, Object>, String> executorFn) {
+        ToolSpec toolSpec = new ToolSpec(name);
+        toolSpec.setDescription(description);
+        toolSpec.setParameters(parameters != null ? parameters : Collections.emptyList());
+        return convertDynamic(toolSpec, executorFn);
+    }
+
+    private ToolEntry convertDynamic(ToolSpec toolSpec, Function<Map<String, Object>, String> executorFn) {
+        ToolSpecification specification = buildSpecification(toolSpec);
+        ToolExecutor executor = buildExecutor(toolSpec, executorFn);
+        return new ToolEntry(specification, executor);
+    }
+
+    private ToolSpecification buildSpecification(ToolSpec toolSpec) {
         String desc = toolSpec.getDescription();
         if (toolSpec.getReturnDescription() != null && !toolSpec.getReturnDescription().isBlank()) {
             desc = desc != null ? desc + "\nReturns: " + toolSpec.getReturnDescription()
                     : "Returns: " + toolSpec.getReturnDescription();
         }
 
-        // 1. 构建 ToolSpecification
         var specBuilder = ToolSpecification.builder()
                 .name(toolSpec.getName())
                 .description(desc);
 
-        // 添加参数定义 — 使用 LangChain4j 1.x 的 JsonObjectSchema API
         List<ParameterSpec> params = toolSpec.getParameters();
         if (params != null && !params.isEmpty()) {
             Map<String, JsonSchemaElement> properties = new LinkedHashMap<>();
@@ -85,16 +122,16 @@ public class LangChainToolBridge {
             specBuilder.parameters(schemaBuilder.build());
         }
 
-        ToolSpecification specification = specBuilder.build();
+        return specBuilder.build();
+    }
 
-        // 2. 构建 ToolExecutor（含指标采集）
-        ToolExecutor executor = (request, memoryId) -> {
+    private ToolExecutor buildExecutor(ToolSpec toolSpec, Function<Map<String, Object>, String> executorFn) {
+        return (request, memoryId) -> {
             log.debug("执行工具 '{}', 参数: {}", toolSpec.getName(), request.arguments());
 
             Map<String, Object> parsedParams = parseArguments(request);
             String validationError = validateParameters(toolSpec, parsedParams);
             if (validationError != null) {
-                // 参数校验失败也记录指标
                 com.agentdsl.core.metrics.MetricsCollector.getInstance().record(
                         new com.agentdsl.core.metrics.ToolMetrics(
                                 toolSpec.getName(), 0, false, "ValidationError",
@@ -105,36 +142,9 @@ public class LangChainToolBridge {
             int timeout = toolSpec.getTimeoutSeconds() > 0 ? toolSpec.getTimeoutSeconds() : 30;
             long startMs = System.currentTimeMillis();
 
-            // TODO [TRACE-EXT-3] 若对接 OpenTelemetry，在此创建子 Span：
-            // Span span = tracer.spanBuilder("tool." + toolSpec.getName())
-            // .setAttribute("tool.timeout", timeout).startSpan();
-
             CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
                 try {
-                    if (toolSpec.isBeanMethod()) {
-                        return invokeBeanMethod(toolSpec, parsedParams);
-                    }
-
-                    Object body = toolSpec.getExecuteBody();
-                    if (body instanceof Closure<?> closure) {
-                        // 注入 SkillExecutionContext 作为闭包 delegate，
-                        // 使得闭包内可以调用 toolCall("toolName", params)
-                        if (toolCallResolver != null) {
-                            SkillExecutionContext ctx = new SkillExecutionContext(toolCallResolver);
-                            closure.setDelegate(ctx);
-                            closure.setResolveStrategy(Closure.DELEGATE_FIRST);
-                        }
-
-                        Object result;
-                        if (closure.getMaximumNumberOfParameters() == 0) {
-                            result = closure.call();
-                        } else {
-                            result = closure.call(parsedParams);
-                        }
-                        return result != null ? result.toString() : "null";
-                    } else {
-                        return "Error: Tool execute body is not a Closure";
-                    }
+                    return executorFn.apply(parsedParams);
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
@@ -144,9 +154,6 @@ public class LangChainToolBridge {
                 String result = future.get(timeout, TimeUnit.SECONDS);
                 long durationMs = System.currentTimeMillis() - startMs;
 
-                // 记录成功指标
-                // TODO [METRICS-EXT-4] 此处可触发 SPI 导出：将指标推送给外部观测系统
-                // TODO [TRACE-EXT-3] 结束子 Span：span.setAttribute("tool.success", true).end();
                 com.agentdsl.core.metrics.MetricsCollector.getInstance().record(
                         new com.agentdsl.core.metrics.ToolMetrics(
                                 toolSpec.getName(), durationMs, true, null,
@@ -157,7 +164,6 @@ public class LangChainToolBridge {
                 future.cancel(true);
                 long durationMs = System.currentTimeMillis() - startMs;
 
-                // 记录超时指标
                 com.agentdsl.core.metrics.MetricsCollector.getInstance().record(
                         new com.agentdsl.core.metrics.ToolMetrics(
                                 toolSpec.getName(), durationMs, false, "TimeoutException",
@@ -171,8 +177,6 @@ public class LangChainToolBridge {
                         ? e.getCause().getClass().getSimpleName()
                         : e.getClass().getSimpleName();
 
-                // 记录异常指标
-                // TODO [TRACE-EXT-3] 结束子 Span：span.setStatus(StatusCode.ERROR).end();
                 com.agentdsl.core.metrics.MetricsCollector.getInstance().record(
                         new com.agentdsl.core.metrics.ToolMetrics(
                                 toolSpec.getName(), durationMs, false, errorType,
@@ -186,8 +190,6 @@ public class LangChainToolBridge {
                                 : e.getMessage()));
             }
         };
-
-        return new ToolEntry(specification, executor);
     }
 
     /**

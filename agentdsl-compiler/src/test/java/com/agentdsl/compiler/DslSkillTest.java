@@ -355,6 +355,63 @@ class DslSkillTest {
             assertTrue(agent.getToolRefs().contains("myTool"));
             assertTrue(agent.getSkillRefs().contains("mySkill"));
         }
+
+        @Test
+        @DisplayName("hypergraph memory 可直接引用内置 deep_recall skill")
+        void shouldAllowBuiltinDeepRecallSkillForHypergraphMemory() {
+            String dsl = """
+                        agent("memoryAgent") {
+                            model {
+                                provider  "ollama"
+                                modelName "qwen2.5:3b"
+                            }
+                            memory {
+                                type "hypergraph"
+                                stm {
+                                    maxEdges 2
+                                }
+                                ltm {
+                                    backend "sqlite"
+                                    path "./build/test-memory.db"
+                                }
+                            }
+                            skills {
+                                include "deep_recall"
+                            }
+                        }
+                    """;
+
+            DslCompileResult result = compiler.compile(dsl);
+
+            AgentSpec agent = result.getFirstAgent();
+            assertTrue(agent.getSkillRefs().contains("deep_recall"));
+        }
+
+        @Test
+        @DisplayName("非 hypergraph memory 不应引用内置 deep_recall skill")
+        void shouldRejectBuiltinDeepRecallSkillWithoutHypergraphMemory() {
+            String dsl = """
+                        agent("badAgent") {
+                            model {
+                                provider  "ollama"
+                                modelName "qwen2.5:3b"
+                            }
+                            memory {
+                                type "message_window"
+                                maxMessages 10
+                            }
+                            skills {
+                                include "deep_recall"
+                            }
+                        }
+                    """;
+
+            DslCompilationException ex = assertThrows(
+                    DslCompilationException.class,
+                    () -> compiler.compile(dsl));
+            assertTrue(ex.getMessage().contains("ADSL-003"));
+            assertTrue(ex.getMessage().contains("deep_recall"));
+        }
     }
 
     @Nested

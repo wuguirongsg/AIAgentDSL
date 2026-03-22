@@ -91,6 +91,77 @@ class DslCompilerTest {
         }
 
         @Test
+        @DisplayName("应解析 hypergraph memory 的结构化子块配置")
+        void shouldParseStructuredHypergraphMemory() {
+            String dsl = """
+                        agent("assistant") {
+                            model {
+                                provider "openai"
+                                modelName "gpt-4"
+                            }
+
+                            memory {
+                                type "hypergraph"
+
+                                stm {
+                                    maxEdges 100
+                                    ttlHours 24
+                                }
+
+                                ltm {
+                                    backend "sqlite"
+                                    path "./data/research_memory.db"
+                                    compressionModel "qwen3:4b"
+                                }
+
+                                vector {
+                                    store "file-local"
+                                    embeddingModel "bge-m3"
+                                    path "./data/research_memory.archive.json"
+                                }
+
+                                decay {
+                                    baseRate 0.1
+                                    importanceBoost 5.0
+                                    compressionThreshold 0.35
+                                    archiveThreshold 0.1
+                                }
+
+                                consolidation {
+                                    intervalHours 6
+                                }
+
+                                deepRecallThreshold 0.85
+                            }
+                        }
+                    """;
+
+            DslCompileResult result = compiler.compile(dsl);
+            AgentSpec agent = result.getFirstAgent();
+
+            assertEquals("hypergraph", agent.getMemory().getType());
+            assertNotNull(agent.getMemory().getStm());
+            assertEquals(100, agent.getMemory().getStm().getMaxEdges());
+            assertEquals(24, agent.getMemory().getStm().getTtlHours());
+            assertNotNull(agent.getMemory().getLtm());
+            assertEquals("sqlite", agent.getMemory().getLtm().getBackend());
+            assertEquals("./data/research_memory.db", agent.getMemory().getLtm().getPath());
+            assertEquals("qwen3:4b", agent.getMemory().getLtm().getCompressionModel());
+            assertNotNull(agent.getMemory().getVector());
+            assertEquals("file-local", agent.getMemory().getVector().getStore());
+            assertEquals("bge-m3", agent.getMemory().getVector().getEmbeddingModel());
+            assertEquals("./data/research_memory.archive.json", agent.getMemory().getVector().getPath());
+            assertNotNull(agent.getMemory().getDecay());
+            assertEquals(0.1, agent.getMemory().getDecay().getBaseRate());
+            assertEquals(5.0, agent.getMemory().getDecay().getImportanceBoost());
+            assertEquals(0.35, agent.getMemory().getDecay().getCompressionThreshold());
+            assertEquals(0.1, agent.getMemory().getDecay().getArchiveThreshold());
+            assertNotNull(agent.getMemory().getConsolidation());
+            assertEquals(6, agent.getMemory().getConsolidation().getIntervalHours());
+            assertEquals(0.85, agent.getMemory().getDeepRecallThreshold());
+        }
+
+        @Test
         @DisplayName("Agent 默认值")
         void shouldApplyDefaults() {
             String dsl = """

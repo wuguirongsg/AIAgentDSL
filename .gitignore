@@ -26,6 +26,7 @@ dev2/
 /tmp/
 /temp/
 docs
+data/
 
 # Configuration
 local.properties

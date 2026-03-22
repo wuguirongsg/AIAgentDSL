@@ -6,6 +6,7 @@ dependencies {
     implementation(project(":agentdsl-langchain4j"))
     implementation(project(":agentdsl-tools"))
     implementation(project(":agentdsl-mcp"))
+    runtimeOnly(project(":agentdsl-memory-hypergraph"))
 
     // Runtime module directly uses LangChain4j types
     implementation("dev.langchain4j:langchain4j:$langchain4jVersion")

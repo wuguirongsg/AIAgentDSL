@@ -6,10 +6,14 @@ import com.agentdsl.core.spec.AgentSpec;
 import com.agentdsl.langchain4j.LangChainMemoryFactory;
 import com.agentdsl.langchain4j.LangChainRagFactory;
 import com.agentdsl.langchain4j.LangChainToolBridge;
+import dev.langchain4j.data.message.UserMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -267,6 +271,265 @@ class AgentDslEngineTest {
             AgentInstance instance = registry.get("no-memory");
             // LangChainMemoryFactory 在 spec 为 null 时返回默认的 10 条记忆
             assertNotNull(instance.getMemory(), "未配置 memory 时也应有默认 ChatMemory");
+        }
+
+        @Test
+        @DisplayName("hypergraph memory 应暴露 deep_recall 工具并参与对话")
+        void shouldExposeDeepRecallCapability() throws Exception {
+            Path tempDir = Files.createTempDirectory("runtime-hypergraph-memory");
+            String dsl = """
+                        agent("hyper-memory-agent") {
+                            model {
+                                provider "ollama"
+                                modelName "qwen:0.5b-chat"
+                            }
+                            memory {
+                                type "hypergraph"
+                                stmMaxMessages 2
+                                sqliteJdbcUrl "%s"
+                            }
+                            skills {
+                                include "deep_recall"
+                            }
+                        }
+                    """.formatted("jdbc:sqlite:" + tempDir.resolve("memory.db"));
+
+            loadDsl(dsl);
+
+            AgentInstance instance = registry.get("hyper-memory-agent");
+            assertNotNull(instance.getMemory());
+            assertTrue(instance.getToolExecutors().containsKey("deep_recall"),
+                    "声明 deep_recall skill 后应注册对应工具");
+
+            instance.getMemory().add(UserMessage.from("我喜欢黑咖啡，不加糖。"));
+            instance.getMemory().add(UserMessage.from("请记住我的咖啡偏好。"));
+            instance.getMemory().add(UserMessage.from("之后回答时可以直接引用这个偏好。"));
+            stubModel.addToolCallResponse("deep_recall", "{\"query\":\"咖啡偏好\"}");
+            stubModel.addTextResponse("用户提到了其咖啡偏好，希望记住。");  // ChatModelMemoryReconstructor 重建调用
+            stubModel.addTextResponse("你偏好黑咖啡，不加糖。");
+
+            String reply = executor.chat("hyper-memory-agent", "我的咖啡偏好是什么？");
+            assertEquals("你偏好黑咖啡，不加糖。", reply);
+            assertTrue(stubModel.getReceivedRequests().size() >= 3, "应包含工具调用、记忆重建和最终回复");
+        }
+
+        @Test
+        @DisplayName("hypergraph memory 命中 deep recall 时应调用真实模型重建")
+        void shouldUseChatModelForDeepRecallReconstruction() throws Exception {
+            Path tempDir = Files.createTempDirectory("runtime-hypergraph-memory-reconstruction");
+            String dsl = """
+                        agent("hyper-memory-agent") {
+                            model {
+                                provider "ollama"
+                                modelName "qwen:0.5b-chat"
+                            }
+                            memory {
+                                type "hypergraph"
+                                stm {
+                                    maxEdges 2
+                                }
+                                deepRecallThreshold 0.4
+                                ltm {
+                                    backend "sqlite"
+                                    path "%s"
+                                }
+                            }
+                            skills {
+                                include "deep_recall"
+                            }
+                        }
+                    """.formatted(tempDir.resolve("memory.db"));
+
+            loadDsl(dsl);
+
+            AgentInstance instance = registry.get("hyper-memory-agent");
+            instance.getMemory().add(UserMessage.from("我喜欢黑咖啡，不加糖。"));
+            instance.getMemory().add(UserMessage.from("请记住我喜欢黑咖啡。"));
+            instance.getMemory().add(UserMessage.from("之后回答时可以直接引用这个偏好。"));
+            stubModel.addToolCallResponse("deep_recall", "{\"query\":\"黑咖啡\"}");
+            stubModel.addTextResponse("根据长期记忆重建，用户偏好黑咖啡且不加糖。");
+            stubModel.addTextResponse("你偏好黑咖啡，不加糖。");
+
+            String reply = executor.chat("hyper-memory-agent", "我喜欢喝什么咖啡？");
+            assertEquals("你偏好黑咖啡，不加糖。", reply);
+
+            boolean foundReconstructionPrompt = stubModel.getReceivedRequests().stream()
+                    .flatMap(request -> request.messages().stream())
+                    .anyMatch(message -> message instanceof dev.langchain4j.data.message.UserMessage userMessage
+                            && userMessage.singleText().contains("重建最相关的历史上下文"));
+
+            assertTrue(foundReconstructionPrompt, "命中 deep recall 后应向模型发送记忆重建提示词");
+        }
+
+        @Test
+        @DisplayName("hypergraph memory 配置 compressionModel 后应调用真实模型压缩")
+        void shouldUseCompressionModelWhenConfigured() throws Exception {
+            Path tempDir = Files.createTempDirectory("runtime-hypergraph-memory-compression");
+            String dsl = """
+                        agent("hyper-memory-agent") {
+                            model {
+                                provider "ollama"
+                                modelName "qwen:0.5b-chat"
+                            }
+                            memory {
+                                type "hypergraph"
+                                stm {
+                                    maxEdges 1
+                                }
+                                ltm {
+                                    backend "sqlite"
+                                    path "%s"
+                                    compressionModel "qwen3:4b"
+                                }
+                            }
+                        }
+                    """.formatted(tempDir.resolve("memory.db"));
+
+            loadDsl(dsl);
+
+            AgentInstance instance = registry.get("hyper-memory-agent");
+            stubModel.addTextResponse("用户咖啡偏好摘要");
+            instance.getMemory().add(UserMessage.from("我喜欢黑咖啡，不加糖。"));
+            instance.getMemory().add(UserMessage.from("请记住我的咖啡偏好。"));
+
+            boolean foundCompressionPrompt = stubModel.getReceivedRequests().stream()
+                    .flatMap(request -> request.messages().stream())
+                    .anyMatch(message -> message instanceof dev.langchain4j.data.message.UserMessage userMessage
+                            && userMessage.singleText().contains("压缩为 1-2 句话的摘要"));
+
+            assertTrue(foundCompressionPrompt, "配置 compressionModel 后应向模型发送压缩提示词");
+        }
+
+        @Test
+        @DisplayName("hypergraph memory 未显式 include skill 时不应注册任何 capability")
+        void shouldNotRegisterCapabilitiesWithoutExplicitSkillInclusion() throws Exception {
+            Path tempDir = Files.createTempDirectory("runtime-hypergraph-memory-no-skill");
+            String dsl = """
+                        agent("hyper-memory-agent") {
+                            model {
+                                provider "ollama"
+                                modelName "qwen:0.5b-chat"
+                            }
+                            memory {
+                                type "hypergraph"
+                                sqliteJdbcUrl "%s"
+                            }
+                        }
+                    """.formatted("jdbc:sqlite:" + tempDir.resolve("memory.db"));
+
+            loadDsl(dsl);
+
+            AgentInstance instance = registry.get("hyper-memory-agent");
+            assertFalse(instance.getToolExecutors().containsKey("deep_recall"),
+                    "未声明 skill 时不应注册 memory capability");
+        }
+
+        @Test
+        @DisplayName("hypergraph memory 不声明 skill 时不应自动暴露任何 capability")
+        void shouldNotAutoExposeCapabilitiesWithoutExplicitSkillDeclaration() throws Exception {
+            Path tempDir = Files.createTempDirectory("runtime-hypergraph-memory-no-auto-expose");
+            String dsl = """
+                        agent("hyper-memory-agent") {
+                            model {
+                                provider "ollama"
+                                modelName "qwen:0.5b-chat"
+                            }
+                            memory {
+                                type "hypergraph"
+                                sqliteJdbcUrl "%s"
+                            }
+                        }
+                    """.formatted("jdbc:sqlite:" + tempDir.resolve("memory.db"));
+
+            loadDsl(dsl);
+
+            AgentInstance instance = registry.get("hyper-memory-agent");
+            assertFalse(instance.getToolExecutors().containsKey("deep_recall"),
+                    "未声明 skill 时 deep_recall 不应自动注册");
+            assertFalse(instance.getToolExecutors().containsKey("consolidate_memory"),
+                    "未声明 skill 时 consolidate_memory 不应自动注册");
+        }
+
+        @Test
+        @DisplayName("deep_recall 应可作为 DSL 内置 skill 注册")
+        void shouldRegisterBuiltinDeepRecallSkill() throws Exception {
+            Path tempDir = Files.createTempDirectory("runtime-hypergraph-memory-builtin-skill");
+            String dsl = """
+                        agent("hyper-memory-agent") {
+                            model {
+                                provider "ollama"
+                                modelName "qwen:0.5b-chat"
+                            }
+                            memory {
+                                type "hypergraph"
+                                stm {
+                                    maxEdges 2
+                                }
+                                ltm {
+                                    backend "sqlite"
+                                    path "%s"
+                                }
+                            }
+                            skills {
+                                include "deep_recall"
+                            }
+                        }
+                    """.formatted(tempDir.resolve("memory.db"));
+
+            loadDsl(dsl);
+
+            AgentInstance instance = registry.get("hyper-memory-agent");
+            assertTrue(instance.getToolExecutors().containsKey("deep_recall"),
+                    "内置 skill 应保留 deep_recall 工具名");
+            assertFalse(instance.getToolExecutors().containsKey("consolidate_memory"),
+                    "禁用 capability 暴露后不应额外暴露其他 memory capability");
+
+            instance.getMemory().add(UserMessage.from("我喜欢黑咖啡，不加糖。"));
+            instance.getMemory().add(UserMessage.from("请记住我的咖啡偏好。"));
+            instance.getMemory().add(UserMessage.from("之后回答时可以直接引用这个偏好。"));
+            stubModel.addToolCallResponse("deep_recall", "{\"query\":\"咖啡偏好\"}");
+            stubModel.addTextResponse("用户提到了其咖啡偏好，希望记住。");  // ChatModelMemoryReconstructor 重建调用
+            stubModel.addTextResponse("你偏好黑咖啡，不加糖。");
+
+            String reply = executor.chat("hyper-memory-agent", "我的咖啡偏好是什么？");
+            assertEquals("你偏好黑咖啡，不加糖。", reply);
+        }
+
+        @Test
+        @DisplayName("内置 deep_recall skill 不应重复注册")
+        void shouldAvoidDuplicateDeepRecallRegistration() throws Exception {
+            Path tempDir = Files.createTempDirectory("runtime-hypergraph-memory-no-duplicate");
+            String dsl = """
+                        agent("hyper-memory-agent") {
+                            model {
+                                provider "ollama"
+                                modelName "qwen:0.5b-chat"
+                            }
+                            memory {
+                                type "hypergraph"
+                                stm {
+                                    maxEdges 2
+                                }
+                                ltm {
+                                    backend "sqlite"
+                                    path "%s"
+                                }
+                            }
+                            skills {
+                                include "deep_recall"
+                            }
+                        }
+                    """.formatted(tempDir.resolve("memory.db"));
+
+            loadDsl(dsl);
+
+            AgentInstance instance = registry.get("hyper-memory-agent");
+            long deepRecallCount = instance.getToolSpecifications().stream()
+                    .filter(spec -> "deep_recall".equals(spec.name()))
+                    .count();
+
+            assertEquals(1L, deepRecallCount, "deep_recall 不应被重复注册");
+            assertTrue(instance.getToolExecutors().containsKey("deep_recall"));
         }
     }
 
