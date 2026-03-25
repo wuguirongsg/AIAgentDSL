@@ -32,8 +32,39 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * 插件内部的存储协调器。
- * 宿主只看到 ChatMemory，STM/LTM/归档的协同逻辑完全封装在插件内。
+ * 超图记忆系统的存储协调器，封装 STM / LTM / 归档三层存储的读写与整合逻辑。
+ *
+ * <h3>架构定位</h3>
+ * <p>这是插件内部的"大脑"，协调以下组件：</p>
+ * <ul>
+ *   <li>{@link StmStore} — 短期记忆，ConcurrentHashMap 内存存储，TTL 自动过期</li>
+ *   <li>{@link LtmStore} — 长期记忆，SQLite 持久化，存储压缩摘要</li>
+ *   <li>{@link VectorArchiveStore} — 向量冷库，存储原始细节碎片，支持语义检索</li>
+ *   <li>{@link ConsolidationEngine} — 后台整合引擎，定时压缩 STM → LTM</li>
+ *   <li>{@link DeepRecallEngine} — 深度回忆引擎，从冷库还原并重建记忆</li>
+ *   <li>{@link MemoryGraphExtractor} — 超图关系抽取，提取节点和标签</li>
+ * </ul>
+ *
+ * <h3>数据流</h3>
+ * <pre>
+ *   用户消息 → toEdge() → graphExtractor → STM
+ *                                    ↓ (consolidation)
+ *                                 LTM + Archive
+ *                                    ↓ (deep recall)
+ *                               重建上下文
+ * </pre>
+ *
+ * <h3>构造器选择</h3>
+ * <p>提供多个构造器以适配不同场景：</p>
+ * <ul>
+ *   <li>仅传 config — 自动创建所有默认组件（生产场景）</li>
+ *   <li>传入自定义 SummaryCompressor/MemoryReconstructor — 注入真实 LLM（需要压缩质量时）</li>
+ *   <li>传入自定义 StmStore/LtmStore/ArchiveStore — 单元测试或自定义后端</li>
+ * </ul>
+ *
+ * @see HypergraphChatMemory
+ * @see ConsolidationEngine
+ * @see DeepRecallEngine
  */
 public class HypergraphMemoryStore {
 
@@ -157,18 +188,41 @@ public class HypergraphMemoryStore {
         }
     }
 
+    /**
+     * 写入一条新的聊天消息到记忆系统。
+     * <p>执行流程：</p>
+     * <ol>
+     *   <li>将 ChatMessage 转换为 HyperEdge（含图关系抽取）</li>
+     *   <li>写入 STM</li>
+     *   <li>触发即时整合检查（过期淘汰 + 容量溢出压缩）</li>
+     * </ol>
+     *
+     * @param message 聊天消息（USER / AI / SYSTEM / TOOL_EXECUTION_RESULT）
+     */
     public void add(ChatMessage message) {
         HyperEdge edge = toEdge(message);
         stmStore.add(edge);
         consolidationEngine.onAfterAdd();
     }
 
+    /**
+     * 获取当前 STM 中的活跃消息列表。
+     * <p>按时间顺序返回，供 LangChain4j 组装对话上下文。</p>
+     *
+     * @return 消息列表（不包含已压缩到 LTM 的历史记忆）
+     */
     public List<ChatMessage> messages() {
         return stmStore.snapshot().stream()
                 .map(this::toChatMessage)
                 .toList();
     }
 
+    /**
+     * 替换所有记忆为给定消息列表。
+     * <p>先清空全部数据（STM + LTM + Archive），再逐条写入新消息。</p>
+     *
+     * @param messages 新的消息列表
+     */
     public void set(Iterable<ChatMessage> messages) {
         clear();
         for (ChatMessage message : messages) {
@@ -176,20 +230,50 @@ public class HypergraphMemoryStore {
         }
     }
 
+    /**
+     * 清空所有记忆数据。
+     * <p>包括 STM 内存、LTM SQLite 数据和归档冷库，不可恢复。</p>
+     */
     public void clear() {
         stmStore.clear();
         ltmStore.clear(config.memoryId());
         archiveStore.clear();
     }
 
+    /**
+     * 手动触发一次完整整合。
+     * <p>执行 STM → LTM 压缩（对低权重超边生成摘要）和 LTM → Archive 归档。</p>
+     */
     public void consolidate() {
         consolidationEngine.consolidate();
     }
 
+    /**
+     * 对指定查询执行深度回忆。
+     * <p>在 LTM 摘要中语义检索，若匹配度超过阈值则从冷库还原原始碎片，
+     * 使用 MemoryReconstructor 重建完整记忆情境。</p>
+     *
+     * @param query 回忆查询文本（如"昨天讨论的结论"）
+     * @return 重建后的记忆内容；如果未触发深度回忆则返回 empty
+     */
     public Optional<String> recall(String query) {
         return deepRecallEngine.recall(query);
     }
 
+    /**
+     * 将 LangChain4j ChatMessage 转换为超图记忆的 HyperEdge。
+     * <p>核心转换逻辑，同时执行以下操作：</p>
+     * <ol>
+     *   <li>提取消息文本内容</li>
+     *   <li>调用 ImportanceScorer 评分（USER/AI/TOOL 消息）</li>
+     *   <li>调用 MemoryGraphExtractor 抽取节点、标签和情绪（入边时即抽取，避免压缩时重复计算）</li>
+     *   <li>构建 STM 级别的 HyperEdge（weight=1.0, archivePointers=[]）</li>
+     * </ol>
+     *
+     * @param message LangChain4j 消息
+     * @return STM 级别的 HyperEdge
+     * @throws IllegalArgumentException 如果消息类型不支持
+     */
     private HyperEdge toEdge(ChatMessage message) {
         Instant now = Instant.now();
         String content = switch (message.type()) {
