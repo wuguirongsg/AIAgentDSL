@@ -6,7 +6,13 @@ import com.agentdsl.tools.builtin.HttpTool;
 import com.agentdsl.tools.builtin.JsonTool;
 import com.agentdsl.tools.builtin.ExcelTool;
 import com.agentdsl.tools.builtin.PdfTool;
-import com.agentdsl.tools.builtin.ImageTool;
+import com.agentdsl.tools.builtin.MultiModalTool;
+import com.agentdsl.tools.builtin.EnvTool;
+import com.agentdsl.tools.builtin.DirTool;
+import com.agentdsl.tools.builtin.WordTool;
+import com.agentdsl.tools.builtin.EmailTool;
+import com.agentdsl.tools.builtin.DingTalkTool;
+import com.agentdsl.tools.builtin.WeChatWorkTool;
 import com.agentdsl.tools.builtin.CmdTool;
 import com.agentdsl.tools.builtin.DatabaseTool;
 import com.agentdsl.tools.builtin.WebSearchTool;
@@ -20,11 +26,13 @@ import java.util.List;
  * 内置工具注册表。
  * 提供预定义的工具集合，包括 HTTP、JSON、File、CodeExecution 等工具。
  *
- * <p>代码执行安全策略可通过以下方式控制（优先级由高到低）：
+ * <p>
+ * 代码执行安全策略可通过以下方式控制（优先级由高到低）：
  * <ol>
- *   <li>{@link #getBuiltinTools(List, boolean)} 的 {@code codeSecurityEnabled} 参数</li>
- *   <li>系统属性 {@code -Dagentdsl.code.security.disabled=true}</li>
- *   <li>环境变量 {@code AGENTDSL_CODE_SECURITY_DISABLED=true}</li>
+ * <li>{@link #getBuiltinTools(List, boolean)} 的 {@code codeSecurityEnabled}
+ * 参数</li>
+ * <li>系统属性 {@code -Dagentdsl.code.security.disabled=true}</li>
+ * <li>环境变量 {@code AGENTDSL_CODE_SECURITY_DISABLED=true}</li>
  * </ol>
  */
 public class BuiltinToolRegistry {
@@ -46,7 +54,13 @@ public class BuiltinToolRegistry {
                     tools.addAll(ToolScanner.scan(new FileTool()));
                     tools.addAll(ToolScanner.scan(new ExcelTool()));
                     tools.addAll(ToolScanner.scan(new PdfTool()));
-                    tools.addAll(ToolScanner.scan(new ImageTool()));
+                    tools.addAll(ToolScanner.scan(new MultiModalTool()));
+                    tools.addAll(ToolScanner.scan(new EnvTool()));
+                    tools.addAll(ToolScanner.scan(new DirTool()));
+                    tools.addAll(ToolScanner.scan(new WordTool()));
+                    tools.addAll(ToolScanner.scan(new EmailTool()));
+                    tools.addAll(ToolScanner.scan(new DingTalkTool()));
+                    tools.addAll(ToolScanner.scan(new WeChatWorkTool()));
                     tools.addAll(ToolScanner.scan(new CmdTool()));
                     tools.addAll(ToolScanner.scan(new DatabaseTool()));
                     tools.addAll(ToolScanner.scan(new WebSearchTool()));
@@ -81,7 +95,13 @@ public class BuiltinToolRegistry {
         tools.addAll(ToolScanner.scan(new FileTool(fileAllowedDirectories)));
         tools.addAll(ToolScanner.scan(new ExcelTool()));
         tools.addAll(ToolScanner.scan(new PdfTool()));
-        tools.addAll(ToolScanner.scan(new ImageTool()));
+        tools.addAll(ToolScanner.scan(new MultiModalTool()));
+        tools.addAll(ToolScanner.scan(new EnvTool()));
+        tools.addAll(ToolScanner.scan(new DirTool(fileAllowedDirectories)));
+        tools.addAll(ToolScanner.scan(new WordTool(fileAllowedDirectories)));
+        tools.addAll(ToolScanner.scan(new EmailTool()));
+        tools.addAll(ToolScanner.scan(new DingTalkTool()));
+        tools.addAll(ToolScanner.scan(new WeChatWorkTool()));
         tools.addAll(ToolScanner.scan(new CmdTool()));
         tools.addAll(ToolScanner.scan(new DatabaseTool()));
         tools.addAll(ToolScanner.scan(new WebSearchTool()));

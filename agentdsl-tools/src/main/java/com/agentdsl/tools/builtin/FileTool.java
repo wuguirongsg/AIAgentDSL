@@ -95,6 +95,145 @@ public class FileTool {
         }
     }
 
+    @AgentTool(name = "file_read_lines", description = "读取指定文件特定行范围的内容。行号从1开始，包含起始和结束行。如果endLine不填，则从startLine读到文件末尾。")
+    public String fileReadLines(
+            @ToolParam(name = "filePath", description = "文件路径") String filePath,
+            @ToolParam(name = "startLine", description = "起始行号（从 1 开始计）") Integer startLine,
+            @ToolParam(name = "endLine", description = "结束行号，不写则读取到末尾", required = false) Integer endLine) {
+        try {
+            Path path = Paths.get(filePath).toAbsolutePath().normalize();
+            if (!isAllowed(path)) return "Error: Access denied.";
+            if (!Files.exists(path) || !Files.isRegularFile(path)) return "Error: File not found or not regular.";
+            long size = Files.size(path);
+            if (size > MAX_READ_SIZE) return "Error: File too large.";
+            
+            List<String> lines = Files.readAllLines(path);
+            int start = (startLine != null && startLine > 0) ? startLine - 1 : 0;
+            int end = (endLine != null && endLine > 0 && endLine <= lines.size()) ? endLine : lines.size();
+            
+            if (start >= lines.size()) return "";
+            if (end < start) return "Error: endLine must be >= startLine";
+            
+            return String.join("\n", lines.subList(start, end));
+        } catch (IOException e) {
+            log.error("文件分段读取失败: {}", filePath, e);
+            return "Error: " + e.getMessage();
+        }
+    }
+
+    @AgentTool(name = "file_append", description = "在文件末尾追加内容。")
+    public String fileAppend(
+            @ToolParam(name = "filePath", description = "文件路径") String filePath,
+            @ToolParam(name = "content", description = "追加的内容") String content) {
+        try {
+            Path path = Paths.get(filePath).toAbsolutePath().normalize();
+            if (!isAllowed(path)) return "Error: Access denied.";
+            if (!Files.exists(path)) {
+                Path parent = path.getParent();
+                if (parent != null && !Files.exists(parent)) Files.createDirectories(parent);
+                Files.createFile(path);
+            }
+            Files.writeString(path, content, java.nio.file.StandardOpenOption.APPEND);
+            return "Successfully appended to " + path;
+        } catch (IOException e) {
+            log.error("文件追加失败: {}", filePath, e);
+            return "Error: " + e.getMessage();
+        }
+    }
+
+    @AgentTool(name = "file_insert", description = "在文件特定行数插入内容（该行及之后的内容向后移动）。行号从1起算。")
+    public String fileInsert(
+            @ToolParam(name = "filePath", description = "文件路径") String filePath,
+            @ToolParam(name = "lineNumber", description = "插入位置的行号（从1起算）") Integer lineNumber,
+            @ToolParam(name = "content", description = "插入的内容") String content) {
+        try {
+            Path path = Paths.get(filePath).toAbsolutePath().normalize();
+            if (!isAllowed(path)) return "Error: Access denied.";
+            if (!Files.exists(path)) return "Error: File not found.";
+            
+            List<String> lines = Files.readAllLines(path);
+            int index = (lineNumber != null && lineNumber > 0) ? lineNumber - 1 : 0;
+            if (index > lines.size()) index = lines.size();
+            
+            lines.add(index, content);
+            Files.write(path, lines);
+            return "Successfully inserted at line " + (index + 1) + " in " + path;
+        } catch (IOException e) {
+            log.error("文件插入失败: {}", filePath, e);
+            return "Error: " + e.getMessage();
+        }
+    }
+
+    @AgentTool(name = "file_search", description = "在文件中全文搜索指定关键字或正则表达式，返回匹配行的行号及内容。")
+    public String fileSearch(
+            @ToolParam(name = "filePath", description = "文件路径") String filePath,
+            @ToolParam(name = "keyword", description = "搜索的关键字或正则表达式") String keyword,
+            @ToolParam(name = "useRegex", description = "是否使用正则表达式，默认false", required = false) Boolean useRegex) {
+        try {
+            Path path = Paths.get(filePath).toAbsolutePath().normalize();
+            if (!isAllowed(path)) return "Error: Access denied.";
+            if (!Files.exists(path)) return "Error: File not found.";
+            
+            boolean regex = (useRegex != null && useRegex);
+            java.util.regex.Pattern pattern = null;
+            if (regex) {
+                pattern = java.util.regex.Pattern.compile(keyword);
+            }
+            
+            List<String> lines = Files.readAllLines(path);
+            StringBuilder result = new StringBuilder();
+            int limit = 100; // max matches to return
+            int count = 0;
+            
+            for (int i = 0; i < lines.size(); i++) {
+                String line = lines.get(i);
+                boolean match = false;
+                if (regex) {
+                    if (pattern.matcher(line).find()) match = true;
+                } else {
+                    if (line.contains(keyword)) match = true;
+                }
+                
+                if (match) {
+                    result.append(i + 1).append(": ").append(line).append("\n");
+                    count++;
+                    if (count >= limit) {
+                        result.append("...(more than ").append(limit).append(" matches found, truncated)");
+                        break;
+                    }
+                }
+            }
+            if (count == 0) return "No matches found.";
+            return result.toString();
+        } catch (Exception e) {
+            log.error("文件搜索失败: {}", filePath, e);
+            return "Error: " + e.getMessage();
+        }
+    }
+
+    @AgentTool(name = "file_replace", description = "在文件中替换指定的文本（首个或全部匹配都会由String.replace处理全局替换）。")
+    public String fileReplace(
+            @ToolParam(name = "filePath", description = "文件路径") String filePath,
+            @ToolParam(name = "target", description = "要替换的文本") String target,
+            @ToolParam(name = "replacement", description = "替换成的新文本") String replacement) {
+        try {
+            Path path = Paths.get(filePath).toAbsolutePath().normalize();
+            if (!isAllowed(path)) return "Error: Access denied.";
+            if (!Files.exists(path)) return "Error: File not found.";
+            
+            String content = Files.readString(path);
+            if (!content.contains(target)) {
+                return "Target string not found in file.";
+            }
+            String newContent = content.replace(target, replacement);
+            Files.writeString(path, newContent);
+            return "Successfully replaced occurrences in " + path;
+        } catch (IOException e) {
+            log.error("文件替换失败: {}", filePath, e);
+            return "Error: " + e.getMessage();
+        }
+    }
+
     /**
      * 检查路径是否在白名单目录中。
      */

@@ -34,11 +34,12 @@ public class DslValidator {
 
     /**
      * 校验所有编译产出物，包括引用存在性校验。
-     * 
+     *
+     * @param knownBuiltinToolNames 运行时已知的内置工具名称，这些工具的引用不产生 Warning
      * @return 编译过程产生的诊断信息列表
      */
     public static List<Diagnostic> validateAll(List<AgentSpec> agents, List<ToolSpec> tools,
-            List<WorkflowSpec> workflows, List<SkillSpec> skills) {
+            List<WorkflowSpec> workflows, List<SkillSpec> skills, Set<String> knownBuiltinToolNames) {
         List<Diagnostic> diagnostics = new ArrayList<>();
 
         for (AgentSpec agent : agents) {
@@ -53,10 +54,8 @@ public class DslValidator {
         for (SkillSpec skill : skills) {
             validateSkill(skill);
         }
-        // 引用存在性校验
-        if (!tools.isEmpty()) {
-            validateToolReferences(agents, tools);
-        }
+        // 引用存在性校验（即使脚本无自定义 tool，也需校验内置工具引用）
+        validateToolReferences(agents, tools, diagnostics, knownBuiltinToolNames);
         if (!agents.isEmpty() && !workflows.isEmpty()) {
             validateWorkflowAgentReferences(workflows, agents);
         }
@@ -68,11 +67,19 @@ public class DslValidator {
     }
 
     /**
-     * 向后兼容重载方法（无 Skills 参数版本）。
+     * 向后兼容重载方法（无 knownBuiltinToolNames 参数版本）。
+     */
+    public static List<Diagnostic> validateAll(List<AgentSpec> agents, List<ToolSpec> tools,
+            List<WorkflowSpec> workflows, List<SkillSpec> skills) {
+        return validateAll(agents, tools, workflows, skills, Set.of());
+    }
+
+    /**
+     * 向后兼容重载方法（无 Skills 和 knownBuiltinToolNames 参数版本）。
      */
     public static List<Diagnostic> validateAll(List<AgentSpec> agents, List<ToolSpec> tools,
             List<WorkflowSpec> workflows) {
-        return validateAll(agents, tools, workflows, List.of());
+        return validateAll(agents, tools, workflows, List.of(), Set.of());
     }
 
     public static void validateAgent(AgentSpec agent) {
@@ -388,7 +395,8 @@ public class DslValidator {
      * 在运行时才注册，编译期不在 {@code tools} 列表中，因此当前只校验在脚本中
      * 显式定义的工具引用。
      */
-    public static void validateToolReferences(List<AgentSpec> agents, List<ToolSpec> tools) {
+    public static void validateToolReferences(List<AgentSpec> agents, List<ToolSpec> tools,
+            List<Diagnostic> diagnostics, Set<String> knownBuiltinToolNames) {
         Set<String> definedToolNames = tools.stream()
                 .map(ToolSpec::getName)
                 .collect(Collectors.toSet());
@@ -397,13 +405,26 @@ public class DslValidator {
             if (agent.getToolRefs() == null)
                 continue;
             for (String ref : agent.getToolRefs()) {
-                if (!definedToolNames.contains(ref)) {
-                    throw new DslCompilationException("ADSL-003",
-                            "Agent '" + agent.getName() + "' 引用了未定义的工具: '" + ref
-                                    + "'，已定义的工具: " + definedToolNames);
+                if (!definedToolNames.contains(ref) && !knownBuiltinToolNames.contains(ref)) {
+                    // 内置工具或运行时注入的工具可能在编译期无法被发现，因此这里改为产生 Warning 而不是抛出异常
+                    diagnostics.add(new Diagnostic(Diagnostic.Severity.WARNING,
+                            "Agent '" + agent.getName() + "' 引用了脚本当中未定义的工具: '" + ref
+                                    + "'，可能是拼写错误，或者该工具是内置/运行期动态注入工具。",
+                            "Agent: " + agent.getName()));
                 }
             }
         }
+    }
+
+    /** 为了向后兼容保留的方法 */
+    public static void validateToolReferences(List<AgentSpec> agents, List<ToolSpec> tools,
+            List<Diagnostic> diagnostics) {
+        validateToolReferences(agents, tools, diagnostics, Set.of());
+    }
+
+    /** 为了向后兼容保留的废弃方法 */
+    public static void validateToolReferences(List<AgentSpec> agents, List<ToolSpec> tools) {
+        validateToolReferences(agents, tools, new ArrayList<>(), Set.of());
     }
 
     // -----------------------------------------------------------------------

@@ -4,12 +4,16 @@ import com.agentdsl.compiler.Diagnostic;
 import com.agentdsl.compiler.DslCompileResult;
 import com.agentdsl.compiler.DslCompiler;
 import com.agentdsl.core.exception.DslCompilationException;
+import com.agentdsl.core.spec.ToolSpec;
+import com.agentdsl.tools.BuiltinToolRegistry;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 
 import java.nio.file.Path;
+import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.stream.Collectors;
 
 /**
  * {@code agentdsl validate} — 校验 DSL 脚本语法和语义。
@@ -18,7 +22,7 @@ import java.util.concurrent.Callable;
  * 
  * <pre>
  *   agentdsl validate examples/simple-chat.agent.groovy
- *   agentdsl validate examples/tool-agent.agent.groovy --json
+ *   agentdsl validate examples/tools-demo.agent.groovy --json
  * </pre>
  *
  * <h3>CI/CD 集成</h3>
@@ -47,6 +51,10 @@ public class ValidateCommand implements Callable<Integer> {
     public Integer call() {
         try {
             DslCompiler compiler = new DslCompiler(sandbox);
+            Set<String> builtinToolNames = BuiltinToolRegistry.getBuiltinTools().stream()
+                    .map(ToolSpec::getName)
+                    .collect(Collectors.toSet());
+            compiler.setKnownBuiltinToolNames(builtinToolNames);
             DslCompileResult result = compiler.compileFile(scriptPath);
 
             if (jsonOutput) {

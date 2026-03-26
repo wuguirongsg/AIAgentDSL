@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @Disabled("需要真实 LLM API Key，手动去掉此注解后运行")
 class WorkflowIntegrationTest {
 
-    private static final Path EXAMPLE_SCRIPT = Paths.get("../examples/workflow-pipeline.agent.groovy");
+    private static final Path EXAMPLE_SCRIPT = Paths.get("../examples/workflow-demo.agent.groovy");
 
     /**
      * 最简单的冒烟测试：只跑一个 Agent 一次调用。

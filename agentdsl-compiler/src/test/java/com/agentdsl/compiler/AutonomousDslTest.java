@@ -136,7 +136,7 @@ class AutonomousDslTest {
         }
 
         @Test
-        @DisplayName("examples/autonomous-smart.agent.groovy 可编译")
+        @DisplayName("examples/autonomous-demo.agent.groovy 可编译")
         void shouldCompileAutonomousSmartExample() throws Exception {
             String dsl= """
             agent('SmartAgent') {

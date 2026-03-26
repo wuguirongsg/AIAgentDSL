@@ -11,6 +11,8 @@ dependencies {
     // 显式依赖编译器和核心（避免编译期找不到类）
     implementation(project(":agentdsl-compiler"))
     implementation(project(":agentdsl-core"))
+    // 显式依赖工具模块（BuiltinToolRegistry 在 validate 命令中使用）
+    implementation(project(":agentdsl-tools"))
 
     // LlmConversationPrinter 直接使用 langchain4j 消息类型（runtime 使用 implementation 不透传）
     implementation("dev.langchain4j:langchain4j:$langchain4jVersion")
