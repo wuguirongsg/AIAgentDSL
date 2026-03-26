@@ -30,18 +30,18 @@ import java.util.concurrent.Callable;
  *   agentdsl run examples/simple-chat.agent.groovy --chat "你好" --verbose
  *
  *   # 执行工作流
- *   agentdsl run examples/workflow.agent.groovy \
+ *   agentdsl run examples/workflow-demo.agent.groovy \
  *       --workflow translate-pipeline \
  *       --input "人工智能正在改变世界"
  *
  *   # 显示执行追踪（耗时详情）
- *   agentdsl run examples/workflow.agent.groovy --workflow my-flow --input "test" --trace
+ *   agentdsl run examples/workflow-demo.agent.groovy --workflow my-flow --input "test" --trace
  *
  *   # 以自主模式执行 Agent
- *   agentdsl run examples/autonomous-agent.agent.groovy --autonomous "帮我搜索最新的 AI 新闻"
+ *   agentdsl run examples/autonomous-demo.agent.groovy --agent PlanAgent --autonomous "帮我搜索最新的 AI 新闻"
  *
  *   # 显示自主模式的思考过程（问题解构、策略规划、监控分析）
- *   agentdsl run examples/smart.agent.groovy --autonomous "分析项目代码质量" --think
+ *   agentdsl run examples/autonomous-demo.agent.groovy --agent SmartAgent --autonomous "分析项目代码质量" --think
  * </pre>
  */
 @Command(name = "run", description = "加载并执行 DSL 脚本（Agent 对话或工作流）", mixinStandardHelpOptions = true)

@@ -19,7 +19,7 @@ import java.util.concurrent.Callable;
  * <h3>示例</h3>
  * 
  * <pre>
- *   agentdsl list examples/workflow-pipeline.agent.groovy
+ *   agentdsl list examples/workflow-demo.agent.groovy
  *   agentdsl list examples/skill-demo.agent.groovy --format json
  * </pre>
  */

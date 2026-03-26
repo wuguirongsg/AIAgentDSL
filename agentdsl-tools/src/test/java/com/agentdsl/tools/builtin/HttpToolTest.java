@@ -17,7 +17,7 @@ class HttpToolTest {
     @DisplayName("GET 请求 — 正常返回")
     void shouldGetSuccessfully() {
         // 使用 httpbin.org 进行真实 HTTP 测试
-        String result = httpTool.httpGet("https://httpbin.org/get", null);
+        String result = httpTool.httpGet("https://httpbin.org/get", null, false);
 
         // httpbin.org/get 返回 JSON，包含 "url" 字段
         assertNotNull(result);
@@ -28,7 +28,7 @@ class HttpToolTest {
     @Test
     @DisplayName("GET 请求 — 无效 URL 返回错误")
     void shouldHandleInvalidUrl() {
-        String result = httpTool.httpGet("not-a-valid-url", null);
+        String result = httpTool.httpGet("not-a-valid-url", null, false);
         assertTrue(result.startsWith("Error:"), "无效 URL 应返回错误");
     }
 
@@ -36,7 +36,7 @@ class HttpToolTest {
     @DisplayName("POST 请求 — 正常返回")
     void shouldPostSuccessfully() {
         String body = "{\"key\":\"value\"}";
-        String result = httpTool.httpPost("https://httpbin.org/post", body, "application/json");
+        String result = httpTool.httpPost("https://httpbin.org/post", body, "application/json", null, false);
 
         assertNotNull(result);
         assertFalse(result.startsWith("Error:"), "不应返回错误: " + result);
@@ -46,7 +46,7 @@ class HttpToolTest {
     @DisplayName("POST 请求 — 默认 content-type 为 JSON")
     void shouldUseDefaultContentType() {
         String body = "{\"test\":true}";
-        String result = httpTool.httpPost("https://httpbin.org/post", body, null);
+        String result = httpTool.httpPost("https://httpbin.org/post", body, null, null, false);
 
         assertNotNull(result);
         assertFalse(result.startsWith("Error:"), "不应返回错误: " + result);

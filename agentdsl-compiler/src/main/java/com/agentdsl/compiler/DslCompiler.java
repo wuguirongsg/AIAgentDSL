@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.*;
 
 /**
@@ -33,6 +34,14 @@ public class DslCompiler {
     private final GroovyShell shell;
     private final boolean sandboxEnabled;
     private final long timeoutSeconds;
+    private volatile Set<String> knownBuiltinToolNames = Set.of();
+
+    /**
+     * 设置运行时已知的内置工具名称，校验时这些工具的引用不会产生 Warning。
+     */
+    public void setKnownBuiltinToolNames(Set<String> names) {
+        this.knownBuiltinToolNames = names;
+    }
 
     public DslCompiler() {
         this(false);
@@ -100,7 +109,7 @@ public class DslCompiler {
                 List<DataSourceSpec> datasources = dslScript.getDatasources();
 
                 // 校验
-                List<Diagnostic> diagnostics = DslValidator.validateAll(agents, tools, workflows, skills);
+                List<Diagnostic> diagnostics = DslValidator.validateAll(agents, tools, workflows, skills, knownBuiltinToolNames);
 
                 log.info("DSL 编译成功: {} agents, {} tools, {} workflows, {} skills, {} datasources, {} diagnostics",
                         agents.size(), tools.size(), workflows.size(), skills.size(), datasources.size(),

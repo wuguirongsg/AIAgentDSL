@@ -8,6 +8,8 @@ dependencies {
     implementation("org.apache.poi:poi-ooxml:5.2.5")
     implementation("org.apache.pdfbox:pdfbox:3.0.2")
     implementation("com.h2database:h2:2.2.224")
+    implementation("org.eclipse.angus:jakarta.mail:2.0.3")
+    implementation("org.commonmark:commonmark:0.21.0")
 
     // Web Search dependencies
     implementation("dev.langchain4j:langchain4j-web-search-engine-tavily:0.36.2")

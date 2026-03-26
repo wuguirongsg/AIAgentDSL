@@ -20,6 +20,8 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * AgentDSL 引擎 — 端到端的入口。
@@ -217,6 +219,11 @@ public class AgentDslEngine implements AutoCloseable {
         List<ToolSpec> builtinTools = BuiltinToolRegistry.getBuiltinTools(allowedDirs);
         if (!builtinTools.isEmpty()) {
             registry.registerTools(builtinTools);
+            // 告知编译器内置工具名称，使校验时不产生误报 Warning
+            Set<String> builtinToolNames = builtinTools.stream()
+                    .map(ToolSpec::getName)
+                    .collect(Collectors.toSet());
+            compiler.setKnownBuiltinToolNames(builtinToolNames);
             log.info("注册了 {} 个内置工具（文件白名单: /tmp, {}/output）", builtinTools.size(), cwd);
         }
     }

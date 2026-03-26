@@ -16,10 +16,10 @@ import picocli.CommandLine.Command;
  *   agentdsl run examples/simple-chat.agent.groovy --chat "你好"
  *
  *   # 列出脚本中定义的所有 Agent、工具、工作流
- *   agentdsl list examples/workflow-pipeline.agent.groovy
+ *   agentdsl list examples/workflow-demo.agent.groovy
  *
  *   # 执行工作流
- *   agentdsl run examples/workflow.agent.groovy --workflow translate-pipeline --input "Hello"
+ *   agentdsl run examples/workflow-demo.agent.groovy --workflow translate-pipeline --input "Hello"
  * </pre>
  */
 @Command(name = "agentdsl", mixinStandardHelpOptions = true, version = "AgentDSL CLI 0.1.0", description = "AgentDSL 命令行工具 — 运行、校验、检查 .agent.groovy 脚本", subcommands = {
