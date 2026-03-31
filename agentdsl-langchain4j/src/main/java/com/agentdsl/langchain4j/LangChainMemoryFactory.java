@@ -1,5 +1,7 @@
 package com.agentdsl.langchain4j;
 
+import com.agentdsl.core.plugin.DefaultPluginRegistry;
+import com.agentdsl.core.plugin.MemoryFactory;
 import com.agentdsl.core.spec.MemorySpec;
 import com.agentdsl.core.spec.ModelSpec;
 import dev.langchain4j.memory.ChatMemory;
@@ -46,6 +48,7 @@ public class LangChainMemoryFactory {
     private volatile Map<String, Object> discoveredProviders;
     private volatile LangChainModelFactory modelFactory;
     private volatile LangChainEmbeddingFactory embeddingFactory;
+    private volatile DefaultPluginRegistry pluginRegistry;
 
     public LangChainMemoryFactory() {
         this(new LangChainModelFactory(), new LangChainEmbeddingFactory());
@@ -66,6 +69,16 @@ public class LangChainMemoryFactory {
         if (embeddingFactory != null) {
             this.embeddingFactory = embeddingFactory;
         }
+    }
+
+    /**
+     * 绑定 PluginRegistry（来自 SPI 插件系统）。
+     * <p>
+     * 绑定后，创建 ChatMemory 时优先从 PluginRegistry 查找 MemoryFactory，
+     * 找不到再回退到旧的 META-INF/agentdsl/memory.providers 机制。
+     */
+    public void bindPluginRegistry(DefaultPluginRegistry pluginRegistry) {
+        this.pluginRegistry = pluginRegistry;
     }
 
     /**
@@ -230,6 +243,22 @@ public class LangChainMemoryFactory {
     }
 
     private ChatMemory createFromPlugin(String type, Map<String, Object> config) {
+        // 优先从 PluginRegistry（SPI 插件系统）查找
+        DefaultPluginRegistry registry = this.pluginRegistry;
+        if (registry != null) {
+            MemoryFactory factory = registry.getMemoryFactory(type);
+            if (factory != null) {
+                log.info("通过 PluginRegistry 创建记忆: type={}", type);
+                Object memory = factory.create(config);
+                if (memory instanceof ChatMemory chatMemory) {
+                    return chatMemory;
+                }
+                throw new IllegalStateException(
+                        "MemoryFactory 返回值不是 ChatMemory: type=" + type);
+            }
+        }
+
+        // 回退到旧的 META-INF/agentdsl/memory.providers 反射机制（向后兼容）
         Object provider = loadProviders().get(type);
         if (provider == null) {
             return null;

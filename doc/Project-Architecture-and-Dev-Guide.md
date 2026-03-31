@@ -1,6 +1,6 @@
 # AIAgentDSL 项目架构设计与开发指导
 
-> **文档版本**: v1.0 &nbsp;|&nbsp; **最后更新**: 2026-03-17
+> **文档版本**: v1.1 &nbsp;|&nbsp; **最后更新**: 2026-03-26
 >
 > **目标读者**: AI 智能体（二次开发）、项目贡献者、架构师
 >
@@ -62,37 +62,39 @@
 
 ## 3. 模块总览与依赖关系
 
-### 3.1 八大模块职责一句话总结
+### 3.1 九大模块职责一句话总结
 
 | 模块 | 一句话职责 |
 |------|-----------|
-| **agentdsl-core** | DSL 语法定义层 — Groovy Delegate + Java Spec 模型 + 注解 + 异常 + 指标 |
+| **agentdsl-core** | DSL 语法定义层 — Groovy Delegate + Java Spec 模型 + 注解 + 异常 + 指标 + **插件 SPI 接口** |
 | **agentdsl-compiler** | DSL 编译与校验 — 把`.agent.groovy` 解析为 Spec 对象并进行语义校验 |
 | **agentdsl-langchain4j** | LangChain4j 桥接层 — 把 Spec 转换为 ChatModel / ChatMemory / ContentRetriever / ToolExecutor |
 | **agentdsl-tools** | 内置工具库 — HTTP、JSON、文件、Excel、PDF、图片、命令行、数据库、搜索、浏览器 |
 | **agentdsl-mcp** | MCP 桥接层 — 把 MCP Server 的工具转换为 LangChain4j ToolSpecification + ToolExecutor |
+| **agentdsl-memory-hypergraph** | 超图记忆插件 — 三层(STM/LTM/Archive)超图记忆，通过 SPI 自动注册 |
 | **agentdsl-runtime** | 执行引擎 — Agent 生命周期管理、ReAct 循环、工作流编排、自主模式、热加载 |
-| **agentdsl-cli** | 命令行入口 — run / validate / list 三个子命令 |
+| **agentdsl-cli** | 命令行入口 — run / validate / list 三个子命令，组装插件 |
 | **agentdsl-spring-boot-starter** | Spring Boot 集成 — 自动配置、REST API、脚本扫描、热加载 |
 
 ### 3.2 模块依赖关系图
 
 ```
                         agentdsl-cli
-                            │
-                            ▼
-                      agentdsl-runtime
-                     ╱    │    │    ╲
-                    ╱     │    │     ╲
-                   ▼      ▼    ▼      ▼
-    agentdsl-langchain4j  │  agentdsl-mcp  agentdsl-tools
-                   │      │      │
-                   ▼      ▼      ▼
-                    agentdsl-compiler
-                          │
-                          ▼
-                     agentdsl-core
-     
+                       ╱             ╲
+                      ▼               ▼ (runtimeOnly, SPI 插件)
+                agentdsl-runtime    agentdsl-memory-hypergraph
+               ╱    │    │    ╲       │ (compileOnly)
+              ╱     │    │     ╲      │
+             ▼      ▼    ▼      ▼     ▼
+  agentdsl-langchain4j  │  agentdsl-mcp  agentdsl-tools
+                 │      │      │
+                 ▼      ▼      ▼
+                  agentdsl-compiler
+                        │
+                        ▼
+                   agentdsl-core
+                  (含 plugin/ SPI 接口)
+
      agentdsl-spring-boot-starter
               │
               ▼
@@ -103,11 +105,12 @@
 ```
 
 **依赖规则**：
-- `agentdsl-core` 是零外部依赖的基础层，所有模块都依赖它
+- `agentdsl-core` 是零外部依赖的基础层，所有模块都依赖它；同时定义了 `plugin/` 下的 SPI 接口（`AgentDslPlugin`、`PluginRegistry`、`MemoryFactory` 等）
 - `agentdsl-compiler` 仅依赖 `core`
 - `agentdsl-langchain4j`、`agentdsl-tools`、`agentdsl-mcp` 分别依赖 `core`
-- `agentdsl-runtime` 聚合所有子模块，是执行入口
-- `agentdsl-cli` 依赖 `runtime` + `compiler` + `core`
+- `agentdsl-memory-hypergraph` 通过 `compileOnly` 依赖 `core`（仅编译期，不传递），通过 Java SPI 自动被 `PluginLoader` 发现
+- `agentdsl-runtime` 聚合子模块，是执行入口；**不再直接依赖任何插件模块**
+- `agentdsl-cli` 依赖 `runtime` + `compiler` + `core`，并通过 `runtimeOnly` 引入可选插件
 - `agentdsl-spring-boot-starter` 依赖 `runtime` + `compiler` + `core`，提供 Spring Boot 自动配置
 
 ---
@@ -236,9 +239,12 @@ AutonomousExecutor.executeReActLoop()
 groovy/com/agentdsl/core/dsl/     ← Groovy DSL Delegate 类（解析语法）
 java/com/agentdsl/core/
   ├── annotation/                  ← @AgentTool, @ToolParam 工具注解
+  ├── builtin/                     ← BuiltinSkillRegistry（动态注册，支持插件扩展）
   ├── dsl/                         ← SkillExecutionContext
   ├── exception/                   ← DslCompilationException, DslRuntimeException
   ├── metrics/                     ← DebugTracer, DebugEvent, MetricsCollector, ToolMetrics
+  ├── plugin/                      ← 插件 SPI 接口（AgentDslPlugin, PluginRegistry,
+  │                                    DefaultPluginRegistry, MemoryFactory, PluginLoader）
   ├── spec/                        ← 所有 Spec 模型（AgentSpec, ToolSpec 等）
   └── utils/                       ← ConvertUtils
 ```
@@ -283,6 +289,7 @@ DSL 解析采用 Groovy 闭包委托模式。每个 DSL 块（如 `agent { }`）
 - 新增 DSL 语法块 → 在 `dsl/` 下新建 Delegate（Groovy）+ 在 `spec/` 下新建 Spec（Java）
 - 新增注解 → 在 `annotation/` 下定义
 - 新增调试事件 → 在 `DebugEvent` 枚举中添加
+- **开发新插件** → 实现 `plugin/AgentDslPlugin` 接口 + SPI 声明（详见 `doc/Plugin-Development-Guide.md`）
 
 ---
 
@@ -333,7 +340,7 @@ DslCompiler.compile(scriptContent)
 | 类 | 输入 → 输出 | 职责 |
 |----|------------|------|
 | **LangChainModelFactory** | ModelSpec → ChatModel | 根据 provider 创建对应 LLM 客户端 |
-| **LangChainMemoryFactory** | MemorySpec → ChatMemory | 创建 message_window 或 token_window 记忆 |
+| **LangChainMemoryFactory** | MemorySpec → ChatMemory | 创建 message_window / token_window 记忆；**自定义类型优先从 PluginRegistry 查找 MemoryFactory，回退到旧 providers 反射机制** |
 | **LangChainRagFactory** | RagSpec → ContentRetriever | 创建嵌入模型 + 向量存储 + 检索器 |
 | **LangChainToolBridge** | ToolSpec → ToolEntry(ToolSpecification, ToolExecutor) | 将 DSL 工具转为 LangChain4j 工具，支持闭包和 Bean 两种执行方式 |
 
@@ -374,7 +381,7 @@ DslCompiler.compile(scriptContent)
 
 **扩展要点**:
 - 新增 LLM Provider → 在 `LangChainModelFactory.create()` 的 switch 中添加分支
-- 新增记忆类型 → 在 `LangChainMemoryFactory.create()` 中添加分支
+- 新增记忆类型 → 实现 `AgentDslPlugin` 接口并通过 `PluginRegistry.registerMemoryFactory()` 注册（无需修改 core）
 - 新增嵌入模型/向量存储 → 扩展 `LangChainRagFactory`
 
 ---
@@ -623,13 +630,14 @@ agentdsl-spring-boot-starter
 |---------|---------|------|
 | **闭包委托 (Delegate)** | agentdsl-core 所有 `*Delegate` | Groovy `Closure.DELEGATE_FIRST` 实现 DSL 语法解析 |
 | **规范对象 (Spec)** | agentdsl-core `spec/` | DSL 解析后的不可变领域模型 |
+| **SPI 插件 (Service Provider Interface)** | agentdsl-core `plugin/` | Java `ServiceLoader` 自动发现插件，`AgentDslPlugin` → `PluginRegistry` 注册扩展 |
 | **工厂 (Factory)** | LangChainModelFactory, LangChainMemoryFactory, LangChainRagFactory | 根据 Spec 创建运行时对象 |
-| **桥接 (Bridge)** | LangChainToolBridge, McpToolProviderBridge | 连接 DSL 领域与 LangChain4j / MCP 生态 |
+| **桥接 (Bridge)** | LangChainToolBridge, McpToolProviderBridge, MemoryCapabilityBridge | 连接 DSL 领域与 LangChain4j / MCP / 插件生态 |
 | **门面 (Facade)** | AgentDslEngine | 统一的引擎入口，屏蔽内部复杂性 |
-| **注册表 (Registry)** | AgentRegistry, BuiltinToolRegistry, DataSourceRegistry | 集中管理运行时对象 |
+| **注册表 (Registry)** | AgentRegistry, BuiltinToolRegistry, DataSourceRegistry, **DefaultPluginRegistry** | 集中管理运行时对象 |
 | **注解驱动** | @AgentTool, @ToolParam + ToolScanner | 声明式工具发现 |
 | **命令 (Command)** | picocli RunCommand, ValidateCommand, ListCommand | CLI 子命令 |
-| **策略 (Strategy)** | UserInteraction, McpDiscoveryService | 可替换的运行时行为 |
+| **策略 (Strategy)** | UserInteraction, McpDiscoveryService, BuiltinSkillResolver | 可替换的运行时行为 |
 | **单例** | MetricsCollector, BuiltinToolRegistry（缓存） | 全局唯一实例 |
 | **ThreadLocal** | DebugTracer | 线程隔离的调试追踪 |
 
@@ -689,6 +697,18 @@ agentdsl-spring-boot-starter
 2. 在 `McpToolProviderBridge.createTransport()` 中添加新分支
 3. 在 `McpServerDelegate` 中确保 DSL 语法支持
 
+### 7.7 新增插件模块
+
+**涉及模块**: 新建独立模块 + `agentdsl-core`（仅 `compileOnly`）
+
+> 详见 [Plugin-Development-Guide.md](Plugin-Development-Guide.md)
+
+1. 新建 Gradle 模块，`compileOnly(project(":agentdsl-core"))`
+2. 实现 `AgentDslPlugin` 接口，覆写 `pluginId()` / `register()` / `priority()`
+3. 在 `META-INF/services/com.agentdsl.core.plugin.AgentDslPlugin` 声明实现类
+4. 在 CLI 或 Starter 中通过 `runtimeOnly` 引入
+5. core / runtime 零改动，SPI 自动发现
+
 ---
 
 ## 8. 项目目录快速索引
@@ -699,10 +719,10 @@ AIAgentDSL/
 ├── settings.gradle.kts           # 列出所有子模块
 ├── gradlew / gradlew.bat         # Gradle Wrapper
 │
-├── agentdsl-core/                # [核心] DSL 语法定义 + Spec 模型
+├── agentdsl-core/                # [核心] DSL 语法定义 + Spec 模型 + 插件 SPI 接口
 │   └── src/main/
 │       ├── groovy/.../dsl/       #   Delegate 类 (DSL 语法解析)
-│       └── java/.../             #   annotation/, spec/, exception/, metrics/, utils/
+│       └── java/.../             #   annotation/, builtin/, plugin/, spec/, exception/, metrics/, utils/
 │
 ├── agentdsl-compiler/            # [编译] DSL 编译器 + 语义校验
 │   └── src/main/java/.../        #   DslCompiler, DslValidator, DslCompileResult, Diagnostic
@@ -777,7 +797,7 @@ AIAgentDSL/
 | **添加新的调试事件类型** | `agentdsl-core/metrics/DebugEvent.java` + `agentdsl-cli/DebugTraceRenderer.java` |
 | **修改热加载行为** | `agentdsl-runtime/HotReloader.java` |
 | **添加新的搜索 Provider** | `agentdsl-tools/builtin/WebSearchTool.java` |
-| **添加新的记忆类型** | `agentdsl-langchain4j/LangChainMemoryFactory.java` |
+| **添加新的记忆类型（插件方式）** | 新建模块 + 实现 `AgentDslPlugin` + SPI 声明（**无需修改 core**） |
 | **修改工具参数校验** | `agentdsl-langchain4j/LangChainToolBridge.java` → `validateParameters()` |
 | **自定义 Spring Boot 配置** | `agentdsl-spring-boot-starter/AgentDslProperties.java` |
 | **添加自定义 REST 端点** | `agentdsl-spring-boot-starter/web/` 新建 Controller |
