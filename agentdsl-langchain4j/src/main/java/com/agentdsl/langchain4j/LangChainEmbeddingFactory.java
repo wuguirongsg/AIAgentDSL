@@ -4,6 +4,7 @@ import com.agentdsl.core.exception.DslRuntimeException;
 import com.agentdsl.core.spec.ModelSpec;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.embedding.onnx.allminilml6v2.AllMiniLmL6V2EmbeddingModel;
+import dev.langchain4j.model.googleai.GoogleAiEmbeddingModel;
 import dev.langchain4j.model.ollama.OllamaEmbeddingModel;
 import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
 import org.slf4j.Logger;
@@ -43,6 +44,7 @@ public class LangChainEmbeddingFactory {
         return switch (provider) {
             case "ollama" -> createOllama(agentModelSpec, modelName);
             case "openai" -> createOpenAi(agentModelSpec, modelName);
+            case "gemini", "google" -> createGemini(agentModelSpec, modelName);
             case "deepseek" -> createOpenAiCompatible(agentModelSpec, modelName,
                     "https://api.deepseek.com/v1", "DEEPSEEK_API_KEY");
             case "kimi", "moonshot" -> createOpenAiCompatible(agentModelSpec, modelName,
@@ -58,6 +60,17 @@ public class LangChainEmbeddingFactory {
             default -> throw new DslRuntimeException("ADSL-054",
                     "当前 provider '" + agentModelSpec.getProvider() + "' 暂不支持 embeddingModel '" + modelName + "'");
         };
+    }
+
+    private EmbeddingModel createGemini(ModelSpec spec, String modelName) {
+        String apiKey = spec.getApiKey();
+        if (apiKey == null || apiKey.isBlank()) {
+            apiKey = resolveEnv("GEMINI_API_KEY");
+        }
+        return GoogleAiEmbeddingModel.builder()
+                .apiKey(apiKey)
+                .modelName(modelName)
+                .build();
     }
 
     private EmbeddingModel createOllama(ModelSpec spec, String modelName) {

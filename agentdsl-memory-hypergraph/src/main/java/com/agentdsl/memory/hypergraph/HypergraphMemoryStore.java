@@ -1,5 +1,10 @@
 package com.agentdsl.memory.hypergraph;
 
+import com.agentdsl.memory.hypergraph.async.GraphUpdateWorker;
+import com.agentdsl.memory.hypergraph.async.IngestQueue;
+import com.agentdsl.memory.hypergraph.async.ScoringBatchWorker;
+import com.agentdsl.memory.hypergraph.async.SummaryPrecomputer;
+import com.agentdsl.memory.hypergraph.config.AsyncConfig;
 import com.agentdsl.memory.hypergraph.config.HypergraphMemoryConfig;
 import com.agentdsl.memory.hypergraph.embedding.EmbeddingGeneratorFactory;
 import com.agentdsl.memory.hypergraph.embedding.TextEmbeddingGenerator;
@@ -13,6 +18,7 @@ import com.agentdsl.memory.hypergraph.engine.SummaryCompressor;
 import com.agentdsl.memory.hypergraph.model.HyperEdge;
 import com.agentdsl.memory.hypergraph.store.EmbeddingStoreVectorArchiveStore;
 import com.agentdsl.memory.hypergraph.store.InMemoryStmStore;
+import com.agentdsl.memory.hypergraph.store.LtmGraphIndex;
 import com.agentdsl.memory.hypergraph.store.LtmStore;
 import com.agentdsl.memory.hypergraph.store.PersistentFileVectorArchiveStore;
 import com.agentdsl.memory.hypergraph.store.SQLiteLtmStore;
@@ -26,6 +32,7 @@ import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -76,6 +83,13 @@ public class HypergraphMemoryStore {
     private final ConsolidationEngine consolidationEngine;
     private final DeepRecallEngine deepRecallEngine;
     private final MemoryGraphExtractor graphExtractor;
+
+    // v1.2 异步层组件
+    private final LtmGraphIndex ltmGraphIndex;
+    private final IngestQueue ingestQueue;
+    private final ScoringBatchWorker scoringBatchWorker;
+    private final GraphUpdateWorker graphUpdateWorker;
+    private final SummaryPrecomputer summaryPrecomputer;
 
     public HypergraphMemoryStore(HypergraphMemoryConfig config) {
         this(config,
@@ -167,16 +181,29 @@ public class HypergraphMemoryStore {
         this.archiveStore = archiveStore;
         this.importanceScorer = importanceScorer;
         this.graphExtractor = new MemoryGraphExtractor();
+
+        // v1.2 异步层初始化
+        AsyncConfig asyncConfig = AsyncConfig.defaults();
+        this.ltmGraphIndex = new LtmGraphIndex();
+        this.ingestQueue = new IngestQueue(asyncConfig.ingestQueueCapacity());
+        this.graphUpdateWorker = new GraphUpdateWorker(ltmGraphIndex);
+        this.scoringBatchWorker = new ScoringBatchWorker(
+                ingestQueue, stmStore, importanceScorer, graphUpdateWorker, asyncConfig);
+        this.summaryPrecomputer = new SummaryPrecomputer(
+                config.memoryId(), ltmStore, ltmGraphIndex, archiveStore, embeddingGenerator, asyncConfig);
+
         this.consolidationEngine = new ConsolidationEngine(
                 config,
                 stmStore,
                 ltmStore,
+                ltmGraphIndex,
                 archiveStore,
                 new com.agentdsl.memory.hypergraph.engine.DecayEngine(
                         config.decay() != null ? config.decay() : com.agentdsl.memory.hypergraph.config.DecayConfig.defaults()),
                 summaryCompressor != null
                         ? summaryCompressor
-                        : com.agentdsl.memory.hypergraph.engine.SummaryCompressorFactory.create(config.ltm()));
+                        : com.agentdsl.memory.hypergraph.engine.SummaryCompressorFactory.create(config.ltm()),
+                new MemoryGraphExtractor());
         this.deepRecallEngine = new DeepRecallEngine(
                 config,
                 ltmStore,
@@ -186,15 +213,20 @@ public class HypergraphMemoryStore {
         if (config.consolidation().autoStart() && config.consolidation().intervalHours() > 0) {
             this.consolidationEngine.start(config.consolidation().intervalHours(), java.util.concurrent.TimeUnit.HOURS);
         }
+        graphUpdateWorker.start();
+        scoringBatchWorker.start();
+        summaryPrecomputer.start();
     }
 
     /**
-     * 写入一条新的聊天消息到记忆系统。
-     * <p>执行流程：</p>
+     * 写入一条新的聊天消息到记忆系统（v1.2 异步化）。
+     *
+     * <p>对话路径目标 &lt; 50ms：</p>
      * <ol>
-     *   <li>将 ChatMessage 转换为 HyperEdge（含图关系抽取）</li>
-     *   <li>写入 STM</li>
-     *   <li>触发即时整合检查（过期淘汰 + 容量溢出压缩）</li>
+     *   <li>规则快速预评分（&lt; 1ms）</li>
+     *   <li>写入 STM，立即对对话路径可见</li>
+     *   <li>触发即时整合检查（过期淘汰 + 容量溢出）</li>
+     *   <li>入队 IngestQueue 供后台精确重评分（非阻塞，立即返回）</li>
      * </ol>
      *
      * @param message 聊天消息（USER / AI / SYSTEM / TOOL_EXECUTION_RESULT）
@@ -203,18 +235,69 @@ public class HypergraphMemoryStore {
         HyperEdge edge = toEdge(message);
         stmStore.add(edge);
         consolidationEngine.onAfterAdd();
+        // 异步精确重评分（非阻塞）
+        ingestQueue.offer(edge, edge.rawContent() != null ? edge.rawContent() : "");
+        // 高重要度消息（个人身份、偏好等关键事实）立即双写到 LTM
+        // 防止应用重启后 InMemoryStmStore 丢失导致跨会话记忆消失
+        if (edge.importance() >= config.immediateFlushThreshold()) {
+            immediateWriteToLtm(edge);
+        }
     }
 
     /**
-     * 获取当前 STM 中的活跃消息列表。
-     * <p>按时间顺序返回，供 LangChain4j 组装对话上下文。</p>
+     * 将高重要度消息立即写入 LTM（不等待整合定时器）。
      *
-     * @return 消息列表（不包含已压缩到 LTM 的历史记忆）
+     * <p>消息同时保留在 STM 中，供当前会话上下文使用。
+     * LTM 中使用原始消息文本作为摘要（不压缩），保留完整事实供后续检索。
+     * 当整合引擎后续将此消息正式迁移到 LTM 时，会用带归档指针的版本覆盖（INSERT OR REPLACE）。</p>
+     */
+    private void immediateWriteToLtm(HyperEdge stmEdge) {
+        com.agentdsl.memory.hypergraph.model.HyperEdge ltmEdge = new com.agentdsl.memory.hypergraph.model.HyperEdge(
+                stmEdge.id(), stmEdge.memoryId(), stmEdge.messageType(), stmEdge.messageText(),
+                stmEdge.toolRequestId(), stmEdge.toolName(),
+                stmEdge.weight(), stmEdge.importance(),
+                com.agentdsl.memory.hypergraph.model.MemoryTier.LTM,
+                1,
+                stmEdge.messageText(), // summary = 原始文本，不压缩，保留完整事实
+                List.of(),             // archivePointers 由正式整合时写入
+                stmEdge.nodeIds(),
+                stmEdge.accessCount(), stmEdge.anchor(),
+                stmEdge.createdAt(), stmEdge.createdAt(),
+                stmEdge.emotionTag(), stmEdge.contextTags(),
+                List.of(), null);
+        ltmStore.save(ltmEdge);
+    }
+
+    /**
+     * 获取当前 STM 中的活跃消息列表，并自动注入相关 LTM 记忆（主动回忆）。
+     *
+     * <p>主动回忆流程：取 STM 中最近一条 USER 消息作为 query，在 LTM 中语义检索；
+     * 若命中（相似度 ≥ proactiveRecallThreshold），将结果以 SystemMessage 形式
+     * 预置在消息列表最前，使 LLM 在生成答复时能感知长期记忆。</p>
+     *
+     * <p>此机制解决了"你知道我是谁吗"类抽象问题：即使用户名字已从 STM 整合到 LTM，
+     * LLM 仍能在无需显式调用 deep_recall 工具的情况下获取相关背景。</p>
+     *
+     * @return 消息列表（可能包含主动注入的长期记忆 SystemMessage）
      */
     public List<ChatMessage> messages() {
-        return stmStore.snapshot().stream()
+        List<HyperEdge> stmEdges = stmStore.snapshot();
+        List<ChatMessage> result = new ArrayList<>(stmEdges.stream()
                 .map(this::toChatMessage)
-                .toList();
+                .toList());
+
+        if (config.proactiveRecallEnabled()) {
+            stmEdges.stream()
+                    .filter(e -> "USER".equals(e.messageType()))
+                    .reduce((a, b) -> b) // 取最近一条用户消息
+                    .map(HyperEdge::messageText)
+                    .filter(q -> q != null && !q.isBlank())
+                    .flatMap(q -> deepRecallEngine.recall(q, config.proactiveRecallThreshold()))
+                    .ifPresent(recalled ->
+                            result.add(0, SystemMessage.from("[长期记忆]\n" + recalled)));
+        }
+
+        return result;
     }
 
     /**
@@ -242,10 +325,19 @@ public class HypergraphMemoryStore {
 
     /**
      * 手动触发一次完整整合。
-     * <p>执行 STM → LTM 压缩（对低权重超边生成摘要）和 LTM → Archive 归档。</p>
+     * <p>执行 STM → LTM 压缩（对低权重超边生成摘要）和 LTM → Archive 归档。
+     * 整合完成后触发预计算摘要索引更新。</p>
      */
     public void consolidate() {
         consolidationEngine.consolidate();
+        summaryPrecomputer.triggerPrecompute();
+    }
+
+    /**
+     * 触发预计算摘要索引更新（异步，非阻塞）。
+     */
+    public void triggerSummaryPrecompute() {
+        summaryPrecomputer.triggerPrecompute();
     }
 
     /**

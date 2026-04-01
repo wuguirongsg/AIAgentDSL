@@ -8,6 +8,7 @@ import dev.langchain4j.memory.ChatMemory;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * LangChain4j ChatMemory 接口的超图记忆实现。
@@ -40,8 +41,11 @@ import java.util.Optional;
  */
 public class HypergraphChatMemory implements ChatMemory {
 
+    private static final int PRECOMPUTE_TRIGGER_INTERVAL = 10;
+
     private final HypergraphMemoryConfig config;
     private final HypergraphMemoryStore store;
+    private final AtomicLong addCounter = new AtomicLong(0);
 
     /**
      * 使用默认依赖创建超图记忆实例。
@@ -78,6 +82,10 @@ public class HypergraphChatMemory implements ChatMemory {
     @Override
     public void add(ChatMessage message) {
         store.add(message);
+        // 每隔 N 条消息懒触发一次预计算摘要索引更新（异步非阻塞）
+        if (addCounter.incrementAndGet() % PRECOMPUTE_TRIGGER_INTERVAL == 0) {
+            store.triggerSummaryPrecompute();
+        }
     }
 
     /**

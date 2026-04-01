@@ -2,8 +2,10 @@ package com.agentdsl.memory.hypergraph.store;
 
 import com.agentdsl.memory.hypergraph.model.HyperEdge;
 import com.agentdsl.memory.hypergraph.model.MemoryNode;
+import com.agentdsl.memory.hypergraph.model.MetaHyperEdge;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 长期记忆存储接口。
@@ -99,4 +101,45 @@ public interface LtmStore {
      * @param memoryId 记忆实例 ID
      */
     void clear(String memoryId);
+
+    // ===== v1.1 新增：两级 LTM 图结构支持 =====
+
+    /**
+     * 按 ID 查找单条超边。
+     */
+    default Optional<HyperEdge> findById(String edgeId) {
+        return Optional.empty();
+    }
+
+    /**
+     * 按 LTM 级别查找超边（1=摘要超图，2=元超边层）。
+     */
+    default List<HyperEdge> findByLtmLevel(String memoryId, int ltmLevel) {
+        return List.of();
+    }
+
+    /**
+     * 更新超边的 metaEdgeId 归属字段。
+     */
+    default void updateMetaEdgeId(String edgeId, String metaEdgeId) {
+    }
+
+    /**
+     * 持久化一条元超边。
+     */
+    default void saveMetaEdge(MetaHyperEdge metaEdge) {
+    }
+
+    /**
+     * 查询所有元超边。
+     */
+    default List<MetaHyperEdge> findAllMetaEdges() {
+        return List.of();
+    }
+
+    /**
+     * 在两条元超边之间建立关联。
+     */
+    default void linkMetaEdges(String metaIdA, String metaIdB) {
+    }
 }

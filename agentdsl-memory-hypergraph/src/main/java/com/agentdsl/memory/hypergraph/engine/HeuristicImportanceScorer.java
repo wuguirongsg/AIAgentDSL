@@ -25,6 +25,11 @@ public class HeuristicImportanceScorer implements ImportanceScorer {
         if (containsAny(normalized, "喜欢", "偏好", "讨厌", "习惯", "记住")) {
             score += 0.15;
         }
+        // 个人身份/偏好信息是最应该持久化的事实，给予高权重
+        if (containsAny(normalized, "我叫", "我的名字", "名叫", "姓名", "名字是", "我是",
+                "我住", "我的职业", "我工作", "我来自", "我今年")) {
+            score += 0.30;
+        }
         if (containsAny(normalized, "!", "！", "紧急", "必须")) {
             score += 0.10;
         }

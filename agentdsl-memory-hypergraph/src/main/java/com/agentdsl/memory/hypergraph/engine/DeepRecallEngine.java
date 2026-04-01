@@ -9,8 +9,10 @@ import com.agentdsl.memory.hypergraph.store.VectorArchiveStore;
 import dev.langchain4j.data.embedding.Embedding;
 
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * 深度回忆引擎，实现"由浅入深"的记忆还原机制。
@@ -94,27 +96,37 @@ public class DeepRecallEngine {
     }
 
     /**
-     * 对指定查询执行深度回忆。
-     * <p>完整回忆流程：语义检索 → 相似度计算 → 阈值判断 → 碎片还原 → 情境重建</p>
+     * 对指定查询执行深度回忆（使用配置的 deepRecallThreshold）。
      *
-     * @param query 回忆查询文本（如"昨天讨论的结论"）
-     * @return 重建后的记忆内容；如果未触发深度回忆（无候选/相似度不足/重建失败）则返回 empty
+     * @param query 回忆查询文本
+     * @return 重建后的记忆内容；未触发则返回 empty
      */
     public Optional<String> recall(String query) {
+        return recall(query, config.deepRecallThreshold());
+    }
+
+    /**
+     * 对指定查询执行深度回忆（自定义阈值，供主动注入使用）。
+     * <p>完整回忆流程：语义检索 → 相似度计算 → 阈值判断 → 碎片还原 → 情境重建</p>
+     *
+     * @param query     回忆查询文本（如"昨天讨论的结论"）
+     * @param threshold 相似度阈值，低于此值则不触发回忆
+     * @return 重建后的记忆内容；如果未触发深度回忆（无候选/相似度不足/重建失败）则返回 empty
+     */
+    public Optional<String> recall(String query, double threshold) {
         List<HyperEdge> candidates = ltmStore.semanticSearch(config.memoryId(), query, config.vector().archiveSearchK());
         if (candidates.isEmpty()) {
             return Optional.empty();
         }
 
-        ScoredEdge best = candidates.stream()
+        Optional<ScoredEdge> bestOpt = candidates.stream()
                 .map(edge -> new ScoredEdge(edge, similarity(query, edge)))
-                .max(Comparator.comparingDouble(ScoredEdge::similarity))
-                .orElse(null);
-        if (best == null) {
+                .max(Comparator.comparingDouble(ScoredEdge::similarity));
+        if (bestOpt.isEmpty()) {
             return Optional.empty();
         }
-        double similarity = best.similarity();
-        if (similarity < config.deepRecallThreshold()) {
+        ScoredEdge best = bestOpt.get();
+        if (best.similarity() < threshold) {
             return Optional.empty();
         }
         List<String> fragments = archiveStore.retrieve(best.edge().archivePointers());
@@ -178,24 +190,47 @@ public class DeepRecallEngine {
     }
 
     /**
-     * 基于字符集交集的字面相似度（兜底策略）。
-     * <p>当 embedding 模型不可用时，使用字符级匹配估算相似度。</p>
+     * 基于字符 bigram 的字面相似度（兜底策略）。
+     * <p>使用相邻字符对（bigram）的 Jaccard 相似度，比字符集交集对中文语义更敏感：
+     * "我叫什么名字" 和 "用户名字叫张三" 能通过 "名字" bigram 匹配，
+     * 而字符集交集只能模糊匹配单个汉字。</p>
+     * <p>同时保留单字符匹配作为补充（取两者较大值），防止超短文本退化。</p>
      *
      * @param queryText 查询文本
      * @param docText   文档文本
      * @return 相似度 [0.0, 1.0]
      */
     private double lexicalSimilarity(String queryText, String docText) {
-        long matched = queryText.chars()
-                .filter(ch -> !Character.isWhitespace(ch))
-                .distinct()
-                .filter(ch -> docText.indexOf(ch) >= 0)
-                .count();
-        long total = queryText.chars()
-                .filter(ch -> !Character.isWhitespace(ch))
-                .distinct()
-                .count();
-        return total == 0 ? 0 : matched / (double) total;
+        String q = queryText.replaceAll("\\s+", "");
+        String d = docText.replaceAll("\\s+", "");
+        if (q.isEmpty() || d.isEmpty()) {
+            return 0;
+        }
+        // bigram Jaccard
+        Set<String> qBigrams = bigrams(q);
+        Set<String> dBigrams = bigrams(d);
+        double bigramScore = 0;
+        if (!qBigrams.isEmpty()) {
+            long intersection = qBigrams.stream().filter(dBigrams::contains).count();
+            long union = qBigrams.size() + dBigrams.size() - intersection;
+            bigramScore = union == 0 ? 0 : intersection / (double) union;
+        }
+        // 单字符集交集（超短文本兜底）
+        long matched = q.chars().distinct().filter(ch -> d.indexOf(ch) >= 0).count();
+        long total = q.chars().distinct().count();
+        double unigramScore = total == 0 ? 0 : matched / (double) total;
+        return Math.max(bigramScore, unigramScore);
+    }
+
+    private Set<String> bigrams(String text) {
+        if (text.length() < 2) {
+            return text.isEmpty() ? Set.of() : Set.of(text);
+        }
+        Set<String> result = new HashSet<>();
+        for (int i = 0; i < text.length() - 1; i++) {
+            result.add(text.substring(i, i + 2));
+        }
+        return result;
     }
 
     private record ScoredEdge(HyperEdge edge, double similarity) {

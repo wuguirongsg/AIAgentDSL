@@ -91,6 +91,7 @@ class HypergraphChatMemoryTest {
                 1.0,
                 0.8,
                 MemoryTier.STM,
+                0,
                 null,
                 List.of(),
                 List.of(),
@@ -100,7 +101,8 @@ class HypergraphChatMemoryTest {
                 expiredAt,
                 EmotionTag.NEUTRAL,
                 List.of(),
-                List.of()));
+                List.of(),
+                null));
 
         store.consolidate();
 
@@ -168,7 +170,10 @@ class HypergraphChatMemoryTest {
                 DecayConfig.defaults(),
                 new ConsolidationConfig(6, false),
                 64,
-                0.5);
+                0.5,
+                false,
+                0.3,
+                0.65);
     }
 
     private Path archivePath(Path tempDir) {

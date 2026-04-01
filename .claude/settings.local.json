@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew :agentdsl-memory-hypergraph:test)",
+      "Bash(./gradlew build:*)",
+      "Bash(git stash:*)",
+      "Bash(./gradlew :agentdsl-compiler:test)",
+      "Bash(./shell/agentdsl.sh run:*)",
+      "Bash(grep -r GoogleAiGemini --include=*.java -l)",
+      "Bash(./gradlew :agentdsl-langchain4j:dependencies --configuration runtimeClasspath)",
+      "Bash(jar -tf ~/.gradle/caches/modules-2/files-2.1/dev.langchain4j/langchain4j-google-ai-gemini/1.11.0/d0916649170d774bb39efc314c9235c519220f91/langchain4j-google-ai-gemini-1.11.0.jar)",
+      "Bash(./gradlew :agentdsl-memory-hypergraph:test :agentdsl-langchain4j:compileJava)",
+      "WebSearch",
+      "WebFetch(domain:github.com)"
+    ]
+  }
+}

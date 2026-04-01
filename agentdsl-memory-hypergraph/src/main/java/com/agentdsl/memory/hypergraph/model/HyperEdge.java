@@ -20,6 +20,7 @@ public record HyperEdge(
         double weight,
         double importance,
         MemoryTier tier,
+        int ltmLevel,
         String compressedSummary,
         List<String> archivePointers,
         List<String> nodeIds,
@@ -29,7 +30,8 @@ public record HyperEdge(
         Instant lastAccessedAt,
         EmotionTag emotionTag,
         List<String> contextTags,
-        List<String> linkedEdgeIds) {
+        List<String> linkedEdgeIds,
+        String metaEdgeId) {
 
     public String messageText() {
         return rawContent;
@@ -51,9 +53,11 @@ public record HyperEdge(
                 toolRequestId, toolName,
                 1.0, importance,
                 MemoryTier.STM,
+                0,
                 null, List.of(), nodeIds,
                 1, anchor,
                 now, now,
-                emotionTag, contextTags, List.of());
+                emotionTag, contextTags, List.of(),
+                null);
     }
 }

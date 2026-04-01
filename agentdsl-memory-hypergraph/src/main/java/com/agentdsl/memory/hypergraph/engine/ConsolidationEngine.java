@@ -6,6 +6,7 @@ import com.agentdsl.memory.hypergraph.graph.MemoryGraphExtractor;
 import com.agentdsl.memory.hypergraph.model.HyperEdge;
 import com.agentdsl.memory.hypergraph.model.MemoryNode;
 import com.agentdsl.memory.hypergraph.model.MemoryTier;
+import com.agentdsl.memory.hypergraph.store.LtmGraphIndex;
 import com.agentdsl.memory.hypergraph.store.LtmStore;
 import com.agentdsl.memory.hypergraph.store.StmStore;
 import com.agentdsl.memory.hypergraph.store.VectorArchiveStore;
@@ -57,17 +58,19 @@ public class ConsolidationEngine {
     private final HypergraphMemoryConfig config;
     private final StmStore stmStore;
     private final LtmStore ltmStore;
+    private final LtmGraphIndex ltmGraphIndex;
     private final VectorArchiveStore archiveStore;
     private final DecayEngine decayEngine;
     private final SummaryCompressor summaryCompressor;
     private final MemoryGraphExtractor graphExtractor;
+    private final AbstractionEngine abstractionEngine;
     private final ScheduledExecutorService scheduler;
 
     public ConsolidationEngine(HypergraphMemoryConfig config,
             StmStore stmStore,
             LtmStore ltmStore,
             VectorArchiveStore archiveStore) {
-        this(config, stmStore, ltmStore, archiveStore,
+        this(config, stmStore, ltmStore, null, archiveStore,
                 new DecayEngine(config.decay() != null ? config.decay() : DecayConfig.defaults()),
                 SummaryCompressorFactory.create(config.ltm()),
                 new MemoryGraphExtractor());
@@ -79,7 +82,8 @@ public class ConsolidationEngine {
             VectorArchiveStore archiveStore,
             DecayEngine decayEngine,
             SummaryCompressor summaryCompressor) {
-        this(config, stmStore, ltmStore, archiveStore, decayEngine, summaryCompressor, new MemoryGraphExtractor());
+        this(config, stmStore, ltmStore, null, archiveStore, decayEngine, summaryCompressor,
+                new MemoryGraphExtractor());
     }
 
     public ConsolidationEngine(HypergraphMemoryConfig config,
@@ -89,13 +93,28 @@ public class ConsolidationEngine {
             DecayEngine decayEngine,
             SummaryCompressor summaryCompressor,
             MemoryGraphExtractor graphExtractor) {
+        this(config, stmStore, ltmStore, null, archiveStore, decayEngine, summaryCompressor, graphExtractor);
+    }
+
+    public ConsolidationEngine(HypergraphMemoryConfig config,
+            StmStore stmStore,
+            LtmStore ltmStore,
+            LtmGraphIndex ltmGraphIndex,
+            VectorArchiveStore archiveStore,
+            DecayEngine decayEngine,
+            SummaryCompressor summaryCompressor,
+            MemoryGraphExtractor graphExtractor) {
         this.config = config;
         this.stmStore = stmStore;
         this.ltmStore = ltmStore;
+        this.ltmGraphIndex = ltmGraphIndex;
         this.archiveStore = archiveStore;
         this.decayEngine = decayEngine;
         this.summaryCompressor = summaryCompressor;
         this.graphExtractor = graphExtractor;
+        this.abstractionEngine = ltmGraphIndex != null
+                ? new AbstractionEngine(config.memoryId(), ltmStore, ltmGraphIndex)
+                : null;
         this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread thread = new Thread(r, "hypergraph-memory-consolidation");
             thread.setDaemon(true);
@@ -141,6 +160,11 @@ public class ConsolidationEngine {
                 .filter(edge -> edge.tier() == MemoryTier.LTM)
                 .filter(edge -> decayEngine.shouldArchive(edge, now))
                 .forEach(edge -> ltmStore.markArchived(edge.id()));
+
+        // Level-1 → Level-2 主题聚类（需要图索引支持）
+        if (abstractionEngine != null) {
+            abstractionEngine.abstractClusters();
+        }
     }
 
     /**
@@ -188,11 +212,11 @@ public class ConsolidationEngine {
                 edge.id(), edge.memoryId(), edge.messageType(), edge.rawContent(),
                 edge.toolRequestId(), edge.toolName(),
                 weight, edge.importance(), MemoryTier.LTM,
-                null, archivePointers,
+                1, null, archivePointers,
                 edge.nodeIds(),
                 edge.accessCount(), edge.anchor(), edge.createdAt(), now,
                 edge.emotionTag(), edge.contextTags(),
-                List.of());
+                List.of(), null);
 
         List<HyperEdge> relatedEdges = ltmStore.findRelatedEdges(edge.memoryId(), probe, 5);
         List<String> linkedEdgeIds = relatedEdges.stream().map(HyperEdge::id).distinct().toList();
@@ -202,13 +226,19 @@ public class ConsolidationEngine {
                 edge.id(), edge.memoryId(), edge.messageType(), edge.rawContent(),
                 edge.toolRequestId(), edge.toolName(),
                 weight, edge.importance(), MemoryTier.LTM,
+                1,
                 summaryCompressor.compress(edge.messageText(), config.summaryMaxLength()),
                 archivePointers,
                 edge.nodeIds(),
                 edge.accessCount(), edge.anchor(), edge.createdAt(), now,
                 edge.emotionTag(), edge.contextTags(),
-                linkedEdgeIds);
+                linkedEdgeIds, null);
         ltmStore.save(ltmEdge);
+
+        // 写入 LTM 图索引【v1.1 新增】
+        if (ltmGraphIndex != null) {
+            ltmGraphIndex.addEdge(ltmEdge);
+        }
 
         // 关系是双向的，命中关联的旧边也补回当前边 id，避免只形成单向 dangling link。
         for (HyperEdge related : relatedEdges) {
@@ -219,5 +249,42 @@ public class ConsolidationEngine {
                     .toList();
             ltmStore.replaceLinkedEdgeIds(related.id(), mergedLinks);
         }
+
+        // 关联迁移：通知图索引更新邻居到新 LTM 超边的关联权重【v1.1 新增】
+        if (ltmGraphIndex != null) {
+            migrateLinks(edge, ltmEdge);
+        }
+    }
+
+    /**
+     * 关联迁移：当一条超边从 STM 迁移到 LTM 时，更新图索引中所有邻居的关联权重。
+     *
+     * <p>STM 和 LTM 共享同一个超边 ID，迁移后 ID 不变，
+     * 因此邻居的 linkedEdgeIds 内容不需要替换，
+     * 但图索引中的边类型需要从"STM-STM"升级为"STM-LTM"或"LTM-LTM"。</p>
+     */
+    private void migrateLinks(HyperEdge oldStmEdge, HyperEdge newLtmEdge) {
+        if (oldStmEdge.linkedEdgeIds() == null) {
+            return;
+        }
+        for (String neighborId : oldStmEdge.linkedEdgeIds()) {
+            stmStore.findAll().stream()
+                    .filter(n -> n.id().equals(neighborId))
+                    .findFirst()
+                    .ifPresent(neighbor ->
+                            ltmGraphIndex.updateEdgeWeight(neighborId, newLtmEdge.id(),
+                                    computeLinkWeight(neighbor, newLtmEdge)));
+            ltmStore.findById(neighborId).ifPresent(neighbor ->
+                    ltmGraphIndex.updateEdgeWeight(neighborId, newLtmEdge.id(),
+                            computeLinkWeight(neighbor, newLtmEdge)));
+        }
+    }
+
+    private double computeLinkWeight(HyperEdge a, HyperEdge b) {
+        List<String> tagsA = a.contextTags() != null ? a.contextTags() : List.of();
+        List<String> tagsB = b.contextTags() != null ? b.contextTags() : List.of();
+        long shared = tagsA.stream().filter(tagsB::contains).count();
+        long total = tagsA.size() + tagsB.size() - shared;
+        return total == 0 ? 0.0 : (double) shared / total;
     }
 }

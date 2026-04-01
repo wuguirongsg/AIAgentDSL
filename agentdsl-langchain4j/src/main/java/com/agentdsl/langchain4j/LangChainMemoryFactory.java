@@ -272,6 +272,7 @@ public class LangChainMemoryFactory {
             }
             throw new IllegalStateException("provider 返回值不是 ChatMemory: " + provider.getClass().getName());
         } catch (ReflectiveOperationException e) {
+            e.printStackTrace();
             throw new IllegalStateException("记忆插件创建失败: type=" + type
                     + ", provider=" + provider.getClass().getName(), e);
         }

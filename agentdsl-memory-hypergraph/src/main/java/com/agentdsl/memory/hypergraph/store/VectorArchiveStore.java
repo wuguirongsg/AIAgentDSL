@@ -48,4 +48,17 @@ public interface VectorArchiveStore {
      * 清空冷库中的所有数据。
      */
     void clear();
+
+    /**
+     * 写入或更新预计算摘要（v1.2 新增）。
+     *
+     * <p>SummaryPrecomputer 把图增强摘要写入此索引，供对话路径轻量检索。
+     * 默认空实现，有向量存储后端的实现类应覆盖此方法。</p>
+     *
+     * @param edgeId          超边或元超边 ID（用作去重键）
+     * @param enrichedSummary 图增强摘要文本（含关联超边的上下文）
+     * @param embedding       摘要的向量表示
+     */
+    default void upsertSummary(String edgeId, String enrichedSummary, java.util.List<Float> embedding) {
+    }
 }

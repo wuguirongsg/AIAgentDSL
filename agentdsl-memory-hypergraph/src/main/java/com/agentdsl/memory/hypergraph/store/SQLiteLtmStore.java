@@ -3,6 +3,7 @@ package com.agentdsl.memory.hypergraph.store;
 import com.agentdsl.memory.hypergraph.model.HyperEdge;
 import com.agentdsl.memory.hypergraph.model.MemoryNode;
 import com.agentdsl.memory.hypergraph.model.MemoryTier;
+import com.agentdsl.memory.hypergraph.model.MetaHyperEdge;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -35,9 +36,10 @@ public class SQLiteLtmStore implements LtmStore {
         String sql = """
                 insert or replace into hypergraph_ltm (
                     id, memory_id, message_type, message_text, tool_request_id, tool_name,
-                    weight, importance, tier, summary, archive_pointers, node_ids,
-                    access_count, anchor, created_at, last_accessed_at, emotion_tag, context_tags, linked_edge_ids
-                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    weight, importance, tier, ltm_level, summary, archive_pointers, node_ids,
+                    access_count, anchor, created_at, last_accessed_at, emotion_tag, context_tags,
+                    linked_edge_ids, meta_edge_id
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
         try (Connection connection = DriverManager.getConnection(jdbcUrl);
                 PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -50,16 +52,18 @@ public class SQLiteLtmStore implements LtmStore {
             statement.setDouble(7, edge.weight());
             statement.setDouble(8, edge.importance());
             statement.setString(9, edge.tier().name());
-            statement.setString(10, edge.compressedSummary());
-            statement.setString(11, join(edge.archivePointers()));
-            statement.setString(12, join(edge.nodeIds()));
-            statement.setInt(13, edge.accessCount());
-            statement.setBoolean(14, edge.anchor());
-            statement.setString(15, edge.createdAt().toString());
-            statement.setString(16, edge.lastAccessedAt().toString());
-            statement.setString(17, edge.emotionTag() != null ? edge.emotionTag().name() : null);
-            statement.setString(18, join(edge.contextTags()));
-            statement.setString(19, join(edge.linkedEdgeIds()));
+            statement.setInt(10, edge.ltmLevel());
+            statement.setString(11, edge.compressedSummary());
+            statement.setString(12, join(edge.archivePointers()));
+            statement.setString(13, join(edge.nodeIds()));
+            statement.setInt(14, edge.accessCount());
+            statement.setBoolean(15, edge.anchor());
+            statement.setString(16, edge.createdAt().toString());
+            statement.setString(17, edge.lastAccessedAt().toString());
+            statement.setString(18, edge.emotionTag() != null ? edge.emotionTag().name() : null);
+            statement.setString(19, join(edge.contextTags()));
+            statement.setString(20, join(edge.linkedEdgeIds()));
+            statement.setString(21, edge.metaEdgeId());
             statement.executeUpdate();
         } catch (SQLException e) {
             throw new IllegalStateException("写入 SQLite LTM 失败", e);
@@ -70,8 +74,9 @@ public class SQLiteLtmStore implements LtmStore {
     public List<HyperEdge> findAll(String memoryId) {
         String sql = """
                 select id, memory_id, message_type, message_text, tool_request_id, tool_name,
-                       weight, importance, tier, summary, archive_pointers, node_ids,
-                       access_count, anchor, created_at, last_accessed_at, emotion_tag, context_tags, linked_edge_ids
+                       weight, importance, tier, ltm_level, summary, archive_pointers, node_ids,
+                       access_count, anchor, created_at, last_accessed_at, emotion_tag, context_tags,
+                       linked_edge_ids, meta_edge_id
                 from hypergraph_ltm
                 where memory_id = ?
                 order by created_at asc
@@ -88,12 +93,27 @@ public class SQLiteLtmStore implements LtmStore {
     @Override
     public List<HyperEdge> semanticSearch(String memoryId, String query, int limit) {
         List<String> queryTokens = tokenize(query);
-        return findAll(memoryId).stream()
+        int safeLimit = Math.max(1, limit);
+        List<HyperEdge> all = findAll(memoryId);
+
+        // 主路径：字面得分 > 0 的候选，按分数排序取 topK
+        List<ScoredEdge> textMatched = all.stream()
                 .map(edge -> new ScoredEdge(edge, score(edge, queryTokens)))
                 .filter(scored -> scored.score() > 0)
-                .sorted((left, right) -> Double.compare(right.score(), left.score()))
-                .limit(Math.max(1, limit))
-                .map(ScoredEdge::edge)
+                .sorted((l, r) -> Double.compare(r.score(), l.score()))
+                .limit(safeLimit)
+                .toList();
+        if (!textMatched.isEmpty()) {
+            return textMatched.stream().map(ScoredEdge::edge).toList();
+        }
+
+        // 兜底路径：字面完全无命中时（如"你知道我是谁吗"），返回重要度最高的 topK 条目
+        // 保证高重要度事实（个人身份、偏好）始终能作为 DeepRecallEngine 的候选进行向量重排
+        return all.stream()
+                .sorted((l, r) -> Double.compare(
+                        Math.max(r.importance(), r.weight()),
+                        Math.max(l.importance(), l.weight())))
+                .limit(safeLimit)
                 .toList();
     }
 
@@ -193,6 +213,8 @@ public class SQLiteLtmStore implements LtmStore {
             ensureColumn(statement, "hypergraph_ltm", "emotion_tag", "text");
             ensureColumn(statement, "hypergraph_ltm", "context_tags", "text");
             ensureColumn(statement, "hypergraph_ltm", "linked_edge_ids", "text");
+            ensureColumn(statement, "hypergraph_ltm", "ltm_level", "integer not null default 0");
+            ensureColumn(statement, "hypergraph_ltm", "meta_edge_id", "text");
         } catch (SQLException e) {
             throw new IllegalStateException("初始化 SQLite LTM 失败", e);
         }
@@ -241,6 +263,7 @@ public class SQLiteLtmStore implements LtmStore {
                         resultSet.getDouble("weight"),
                         resultSet.getDouble("importance"),
                         MemoryTier.valueOf(resultSet.getString("tier")),
+                        resultSet.getInt("ltm_level"),
                         resultSet.getString("summary"),
                         splitPointers(resultSet.getString("archive_pointers")),
                         splitPointers(resultSet.getString("node_ids")),
@@ -250,7 +273,8 @@ public class SQLiteLtmStore implements LtmStore {
                         Instant.parse(resultSet.getString("last_accessed_at")),
                         readEmotionTag(resultSet.getString("emotion_tag")),
                         splitPointers(resultSet.getString("context_tags")),
-                        splitPointers(resultSet.getString("linked_edge_ids"))));
+                        splitPointers(resultSet.getString("linked_edge_ids")),
+                        resultSet.getString("meta_edge_id")));
             }
             return result;
         }
@@ -359,6 +383,120 @@ public class SQLiteLtmStore implements LtmStore {
                 .count();
         long total = compactQuery.chars().distinct().count();
         return total == 0 ? 0 : matched / (double) total;
+    }
+
+    // ===== v1.1 新增方法 =====
+
+    @Override
+    public java.util.Optional<HyperEdge> findById(String edgeId) {
+        String sql = """
+                select id, memory_id, message_type, message_text, tool_request_id, tool_name,
+                       weight, importance, tier, ltm_level, summary, archive_pointers, node_ids,
+                       access_count, anchor, created_at, last_accessed_at, emotion_tag, context_tags,
+                       linked_edge_ids, meta_edge_id
+                from hypergraph_ltm where id = ?
+                """;
+        try (Connection connection = DriverManager.getConnection(jdbcUrl);
+                PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, edgeId);
+            List<HyperEdge> edges = readEdges(statement);
+            return edges.isEmpty() ? java.util.Optional.empty() : java.util.Optional.of(edges.get(0));
+        } catch (SQLException e) {
+            throw new IllegalStateException("按 ID 查询 SQLite LTM 失败", e);
+        }
+    }
+
+    @Override
+    public List<HyperEdge> findByLtmLevel(String memoryId, int ltmLevel) {
+        String sql = """
+                select id, memory_id, message_type, message_text, tool_request_id, tool_name,
+                       weight, importance, tier, ltm_level, summary, archive_pointers, node_ids,
+                       access_count, anchor, created_at, last_accessed_at, emotion_tag, context_tags,
+                       linked_edge_ids, meta_edge_id
+                from hypergraph_ltm where memory_id = ? and ltm_level = ? order by created_at asc
+                """;
+        try (Connection connection = DriverManager.getConnection(jdbcUrl);
+                PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, memoryId);
+            statement.setInt(2, ltmLevel);
+            return readEdges(statement);
+        } catch (SQLException e) {
+            throw new IllegalStateException("按 ltm_level 查询 SQLite LTM 失败", e);
+        }
+    }
+
+    @Override
+    public void updateMetaEdgeId(String edgeId, String metaEdgeId) {
+        String sql = "update hypergraph_ltm set meta_edge_id = ? where id = ?";
+        try (Connection connection = DriverManager.getConnection(jdbcUrl);
+                PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, metaEdgeId);
+            statement.setString(2, edgeId);
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            throw new IllegalStateException("更新 meta_edge_id 失败", e);
+        }
+    }
+
+    @Override
+    public void saveMetaEdge(MetaHyperEdge metaEdge) {
+        String sql = """
+                insert or replace into hypergraph_meta_edges
+                    (id, member_edge_ids, theme_summary, linked_meta_edge_ids, context_tags,
+                     cohesion, created_at, updated_at)
+                values (?, ?, ?, ?, ?, ?, ?, ?)
+                """;
+        try (Connection connection = DriverManager.getConnection(jdbcUrl);
+                PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, metaEdge.id());
+            statement.setString(2, join(metaEdge.memberEdgeIds()));
+            statement.setString(3, metaEdge.themeSummary());
+            statement.setString(4, join(metaEdge.linkedMetaEdgeIds()));
+            statement.setString(5, join(metaEdge.contextTags()));
+            statement.setDouble(6, metaEdge.cohesion());
+            statement.setString(7, metaEdge.createdAt().toString());
+            statement.setString(8, metaEdge.updatedAt().toString());
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            throw new IllegalStateException("写入 meta_edges 失败", e);
+        }
+    }
+
+    @Override
+    public List<MetaHyperEdge> findAllMetaEdges() {
+        String sql = "select * from hypergraph_meta_edges order by created_at asc";
+        try (Connection connection = DriverManager.getConnection(jdbcUrl);
+                PreparedStatement statement = connection.prepareStatement(sql);
+                var resultSet = statement.executeQuery()) {
+            List<MetaHyperEdge> result = new ArrayList<>();
+            while (resultSet.next()) {
+                result.add(new MetaHyperEdge(
+                        resultSet.getString("id"),
+                        splitPointers(resultSet.getString("member_edge_ids")),
+                        resultSet.getString("theme_summary"),
+                        splitPointers(resultSet.getString("linked_meta_edge_ids")),
+                        splitPointers(resultSet.getString("context_tags")),
+                        resultSet.getDouble("cohesion"),
+                        java.time.Instant.parse(resultSet.getString("created_at")),
+                        java.time.Instant.parse(resultSet.getString("updated_at"))));
+            }
+            return result;
+        } catch (SQLException e) {
+            throw new IllegalStateException("查询 meta_edges 失败", e);
+        }
+    }
+
+    @Override
+    public void linkMetaEdges(String metaIdA, String metaIdB) {
+        String sql = "insert or ignore into hypergraph_meta_edge_links (meta_id_a, meta_id_b) values (?, ?)";
+        try (Connection connection = DriverManager.getConnection(jdbcUrl);
+                PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, metaIdA);
+            statement.setString(2, metaIdB);
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            throw new IllegalStateException("写入 meta_edge_links 失败", e);
+        }
     }
 
     private record ScoredEdge(HyperEdge edge, double score) {

@@ -16,7 +16,10 @@ public record HypergraphMemoryConfig(
         DecayConfig decay,
         ConsolidationConfig consolidation,
         int summaryMaxLength,
-        double deepRecallThreshold) {
+        double deepRecallThreshold,
+        boolean proactiveRecallEnabled,
+        double proactiveRecallThreshold,
+        double immediateFlushThreshold) {
 
     @SuppressWarnings("unchecked")
     public static HypergraphMemoryConfig from(Map<String, Object> config) {
@@ -72,7 +75,10 @@ public record HypergraphMemoryConfig(
                 decay,
                 consolidation,
                 intValue(config, "summaryMaxLength", 240),
-                doubleValue(config, "deepRecallThreshold", 0.85));
+                doubleValue(config, "deepRecallThreshold", 0.85),
+                booleanValue(config, "proactiveRecallEnabled", true),
+                doubleValue(config, "proactiveRecallThreshold", 0.3),
+                doubleValue(config, "immediateFlushThreshold", 0.65));
     }
 
     private static Map<String, Object> nestedMap(Map<String, Object> root, String key) {
