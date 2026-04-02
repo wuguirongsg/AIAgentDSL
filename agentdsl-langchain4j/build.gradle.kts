@@ -3,7 +3,9 @@ val langchain4jVersion = "1.11.0"
 dependencies {
     implementation(project(":agentdsl-core"))
     implementation("org.apache.groovy:groovy-json:4.0.27")
-    runtimeOnly(project(":agentdsl-memory-hypergraph"))
+    runtimeOnly("com.agentdsl:agentdsl-memory-hypergraph:0.1.0-SNAPSHOT")
+    // 为测试添加编译期依赖，使 SPI 能够在测试中发现插件
+    testImplementation("com.agentdsl:agentdsl-memory-hypergraph:0.1.0-SNAPSHOT")
 
     // LangChain4j core
     implementation("dev.langchain4j:langchain4j:$langchain4jVersion")

@@ -14,7 +14,7 @@ dependencies {
     // 显式依赖工具模块（BuiltinToolRegistry 在 validate 命令中使用）
     implementation(project(":agentdsl-tools"))
     // 可选插件：超图记忆系统（通过 SPI 自动发现，不需要编译期依赖）
-    runtimeOnly(project(":agentdsl-memory-hypergraph"))
+    runtimeOnly("com.agentdsl:agentdsl-memory-hypergraph:0.1.0-SNAPSHOT")
 
     // LlmConversationPrinter 直接使用 langchain4j 消息类型（runtime 使用 implementation 不透传）
     implementation("dev.langchain4j:langchain4j:$langchain4jVersion")
