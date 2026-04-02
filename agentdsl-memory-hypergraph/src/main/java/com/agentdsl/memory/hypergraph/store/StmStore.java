@@ -72,6 +72,18 @@ public interface StmStore {
     void remove(String edgeId);
 
     /**
+     * 检查指定 ID 的超边是否仍在 STM 中。
+     *
+     * <p>用于 ScoringBatchWorker 在更新前确认超边未被迁移到 LTM，避免幽灵边写回。</p>
+     *
+     * @param edgeId 超边 ID
+     * @return true 如果超边存在于 STM
+     */
+    default boolean exists(String edgeId) {
+        return findAll().stream().anyMatch(e -> e.id().equals(edgeId));
+    }
+
+    /**
      * 清空所有 STM 数据。
      */
     void clear();

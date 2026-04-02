@@ -210,6 +210,9 @@ public class HypergraphMemoryStore {
                 archiveStore,
                 embeddingGenerator,
                 reconstructor != null ? reconstructor : new com.agentdsl.memory.hypergraph.engine.HeuristicMemoryReconstructor());
+        // 启动时从 SQLite 重建图索引，否则 findNeighbors/hasPath 在重启后永远返回空
+        ltmGraphIndex.rebuild(ltmStore.findAll(config.memoryId()), ltmStore.findAllMetaEdges());
+
         if (config.consolidation().autoStart() && config.consolidation().intervalHours() > 0) {
             this.consolidationEngine.start(config.consolidation().intervalHours(), java.util.concurrent.TimeUnit.HOURS);
         }
@@ -321,6 +324,19 @@ public class HypergraphMemoryStore {
         stmStore.clear();
         ltmStore.clear(config.memoryId());
         archiveStore.clear();
+    }
+
+    /**
+     * 关闭所有异步后台组件，释放线程池资源。
+     *
+     * <p>按启动的逆序关闭：先停止评分/预计算，再停止图索引更新，最后停止整合调度。
+     * 所有线程均为 daemon 线程，进程退出时会自动终止；此方法主要用于测试隔离和优雅下线。</p>
+     */
+    public void shutdown() {
+        summaryPrecomputer.shutdown();
+        scoringBatchWorker.shutdown();
+        graphUpdateWorker.shutdown();
+        consolidationEngine.shutdown();
     }
 
     /**

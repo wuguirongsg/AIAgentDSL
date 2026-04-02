@@ -69,6 +69,11 @@ public class ScoringBatchWorker {
                 double preciseScore = scorer.score(task.rawText());
                 // 差距 > 0.1 才更新，减少不必要写入
                 if (Math.abs(preciseScore - task.edge().importance()) > 0.1) {
+                    // 检查超边是否仍在 STM，防止将已迁移到 LTM 的超边写回 STM（幽灵边）
+                    if (!stmStore.exists(task.edge().id())) {
+                        log.fine("跳过重评分（超边已迁移到 LTM）: edgeId=" + task.edge().id());
+                        continue;
+                    }
                     HyperEdge rescored = rescoreEdge(task.edge(), preciseScore);
                     stmStore.remove(task.edge().id());
                     stmStore.add(rescored);

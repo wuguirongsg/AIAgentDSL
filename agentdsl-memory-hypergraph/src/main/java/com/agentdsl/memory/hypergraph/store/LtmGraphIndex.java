@@ -8,6 +8,7 @@ import org.jgrapht.graph.SimpleWeightedGraph;
 import org.jgrapht.traverse.BreadthFirstIterator;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -124,6 +125,31 @@ public class LtmGraphIndex {
         level2Graph.addVertex(metaIdB);
         if (!level2Graph.containsEdge(metaIdA, metaIdB)) {
             level2Graph.addEdge(metaIdA, metaIdB);
+        }
+    }
+
+    /**
+     * 服务启动时从持久化数据重建图索引。
+     *
+     * <p>必须在 LtmStore 初始化完成后调用，将所有已存在的 LTM 超边和元超边加载到内存图。
+     * 重复调用会先清空现有图再重建，防止数据重叠。</p>
+     *
+     * @param ltmEdges  所有 LTM Level-1 超边（来自 hypergraph_ltm 表）
+     * @param metaEdges 所有元超边（来自 hypergraph_meta_edges 表）
+     */
+    public synchronized void rebuild(List<HyperEdge> ltmEdges, List<MetaHyperEdge> metaEdges) {
+        level1Graph.removeAllVertices(new HashSet<>(level1Graph.vertexSet()));
+        level2Graph.removeAllVertices(new HashSet<>(level2Graph.vertexSet()));
+        for (HyperEdge edge : ltmEdges) {
+            addEdge(edge);
+        }
+        for (MetaHyperEdge meta : metaEdges) {
+            addMetaEdge(meta);
+            if (meta.linkedMetaEdgeIds() != null) {
+                for (String linkedId : meta.linkedMetaEdgeIds()) {
+                    addMetaLink(meta.id(), linkedId);
+                }
+            }
         }
     }
 

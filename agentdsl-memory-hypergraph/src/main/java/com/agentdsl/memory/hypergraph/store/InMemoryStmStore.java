@@ -81,6 +81,11 @@ public class InMemoryStmStore implements StmStore {
     }
 
     @Override
+    public boolean exists(String edgeId) {
+        return edges.containsKey(edgeId);
+    }
+
+    @Override
     public void remove(String edgeId) {
         edges.remove(edgeId);
         order.remove(edgeId);
